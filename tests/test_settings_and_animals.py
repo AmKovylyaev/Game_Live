@@ -8,7 +8,7 @@ from tempfile import TemporaryDirectory
 
 from ecosystem.animals import Herbivore, Predator
 from ecosystem.grass import GrassField
-from ecosystem.settings import SETTING_KEYS, GameSettings, SettingsStore
+from ecosystem.settings import SETTING_KEYS, GameSettings, SettingsStore, _frozen_settings_directory
 from ecosystem.simulation import Simulation
 from ecosystem.ui.app import SLIDER_SECTIONS
 
@@ -38,7 +38,7 @@ class GameSettingsTests(unittest.TestCase):
     def test_store_round_trip(self) -> None:
         settings = GameSettings(columns=42, herbivores=12, predator_speed=4.5)
         with TemporaryDirectory() as directory:
-            store = SettingsStore(Path(directory) / "settings.json")
+            store = SettingsStore(Path(directory) / "nested" / "settings.json")
             store.save(settings)
 
             self.assertEqual(store.load(), settings)
@@ -110,3 +110,27 @@ class SettingsUiTests(unittest.TestCase):
         ]
 
         self.assertCountEqual(visible_keys, SETTING_KEYS)
+
+
+class PackagedSettingsTests(unittest.TestCase):
+    def test_frozen_settings_use_platform_conventions(self) -> None:
+        home = Path("/tmp/example-home")
+
+        self.assertEqual(
+            _frozen_settings_directory(platform="darwin", home=home),
+            home / "Library" / "Application Support" / "Pixel Ecosystem",
+        )
+        self.assertEqual(
+            _frozen_settings_directory(
+                platform="win32",
+                environment={"APPDATA": "C:/Users/example/AppData/Roaming"},
+                home=home,
+            ),
+            Path("C:/Users/example/AppData/Roaming") / "Pixel Ecosystem",
+        )
+        self.assertEqual(
+            _frozen_settings_directory(
+                platform="linux", environment={"XDG_CONFIG_HOME": "/tmp/config"}, home=home
+            ),
+            Path("/tmp/config/pixel-ecosystem"),
+        )

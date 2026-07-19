@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import json
+import os
+import sys
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -15,7 +18,44 @@ from .constants import (
     DEFAULT_PREDATOR_STARVATION,
 )
 
-SETTINGS_PATH = Path(__file__).resolve().parent.parent / "settings.json"
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+APP_SETTINGS_DIRECTORY = "Pixel Ecosystem"
+
+
+def _frozen_settings_directory(
+    platform: str | None = None,
+    environment: Mapping[str, str] | None = None,
+    home: Path | None = None,
+) -> Path:
+    """Return the conventional settings directory for a packaged app."""
+
+    platform = sys.platform if platform is None else platform
+    environment = os.environ if environment is None else environment
+    home = Path.home() if home is None else home
+    if platform == "darwin":
+        return home / "Library" / "Application Support" / APP_SETTINGS_DIRECTORY
+    if platform == "win32":
+        app_data = environment.get("APPDATA")
+        return (
+            Path(app_data) / APP_SETTINGS_DIRECTORY
+            if app_data
+            else home / "AppData" / "Roaming" / APP_SETTINGS_DIRECTORY
+        )
+    config_home = environment.get("XDG_CONFIG_HOME")
+    return (
+        Path(config_home) / "pixel-ecosystem"
+        if config_home
+        else home / ".config" / "pixel-ecosystem"
+    )
+
+
+def _settings_path() -> Path:
+    if getattr(sys, "frozen", False):
+        return _frozen_settings_directory() / "settings.json"
+    return PROJECT_ROOT / "settings.json"
+
+
+SETTINGS_PATH = _settings_path()
 
 
 @dataclass(frozen=True, slots=True)
@@ -104,6 +144,7 @@ class SettingsStore:
 
     def save(self, settings: GameSettings) -> None:
         try:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
             self.path.write_text(
                 json.dumps(settings.to_dict(), ensure_ascii=False, indent=2) + "\n",
                 encoding="utf-8",
