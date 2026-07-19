@@ -1,0 +1,13 @@
+{
+  "columns": 32,
+  "rows": 26,
+  "herbivores": 4,
+  "predators": 3,
+  "grass_regrowth": 5.0,
+  "herbivore_reproduction": 2.4,
+  "predator_reproduction": 0.8,
+  "herbivore_starvation": 5.0,
+  "predator_starvation": 6.0,
+  "herbivore_speed": 2.6,
+  "predator_speed": 8.0
+}
