@@ -18,6 +18,41 @@ from .constants import (
 SETTINGS_PATH = Path(__file__).resolve().parent.parent / "settings.json"
 
 
+@dataclass(frozen=True, slots=True)
+class SettingRule:
+    """Validation and UI metadata for one setting."""
+
+    minimum: float
+    maximum: float
+    step: float
+    integer: bool = False
+
+    def normalize(self, value: Any, default: int | float) -> int | float:
+        try:
+            number = int(value) if self.integer else float(value)
+        except (TypeError, ValueError):
+            number = default
+        number = min(self.maximum, max(self.minimum, number))
+        return int(number) if self.integer else round(number, 1)
+
+
+SETTING_RULES = {
+    "columns": SettingRule(8, 100, 1, integer=True),
+    "rows": SettingRule(8, 70, 1, integer=True),
+    "herbivores": SettingRule(0, 300, 1, integer=True),
+    "predators": SettingRule(0, 150, 1, integer=True),
+    "grass_regrowth": SettingRule(3, 30, 1),
+    "herbivore_reproduction": SettingRule(0.1, 3, 0.1),
+    "predator_reproduction": SettingRule(0.1, 3, 0.1),
+    "herbivore_starvation": SettingRule(5, 15, 1),
+    "predator_starvation": SettingRule(5, 15, 1),
+    "herbivore_speed": SettingRule(0.5, 6, 0.1),
+    "predator_speed": SettingRule(0.5, 8, 0.1),
+}
+SETTING_KEYS = tuple(SETTING_RULES)
+REPRODUCTION_KEYS = ("herbivore_reproduction", "predator_reproduction")
+
+
 @dataclass(slots=True)
 class GameSettings:
     columns: int = 30
@@ -35,43 +70,21 @@ class GameSettings:
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "GameSettings":
         defaults = cls()
-
-        def number(name: str, default: float, low: float, high: float, *, integer: bool = False) -> float | int:
-            try:
-                value = int(data.get(name, default)) if integer else float(data.get(name, default))
-            except (TypeError, ValueError):
-                value = default
-            return min(high, max(low, value))
-
-        legacy_reproduction = number("reproduction_coefficient", defaults.herbivore_reproduction, 0.1, 3)
-        return cls(
-            columns=int(number("columns", defaults.columns, 8, 100, integer=True)),
-            rows=int(number("rows", defaults.rows, 8, 70, integer=True)),
-            herbivores=int(number("herbivores", defaults.herbivores, 0, 300, integer=True)),
-            predators=int(number("predators", defaults.predators, 0, 150, integer=True)),
-            grass_regrowth=round(number("grass_regrowth", defaults.grass_regrowth, 3, 30), 1),
-            herbivore_reproduction=round(number("herbivore_reproduction", legacy_reproduction, 0.1, 3), 1),
-            predator_reproduction=round(number("predator_reproduction", legacy_reproduction, 0.1, 3), 1),
-            herbivore_starvation=round(number("herbivore_starvation", defaults.herbivore_starvation, 5, 15), 1),
-            predator_starvation=round(number("predator_starvation", defaults.predator_starvation, 5, 15), 1),
-            herbivore_speed=round(number("herbivore_speed", defaults.herbivore_speed, 0.5, 6), 1),
-            predator_speed=round(number("predator_speed", defaults.predator_speed, 0.5, 8), 1),
+        legacy_reproduction = SETTING_RULES["herbivore_reproduction"].normalize(
+            data.get("reproduction_coefficient"), defaults.herbivore_reproduction
         )
+        values = {
+            name: rule.normalize(data.get(name, getattr(defaults, name)), getattr(defaults, name))
+            for name, rule in SETTING_RULES.items()
+        }
+        for name in REPRODUCTION_KEYS:
+            values[name] = SETTING_RULES[name].normalize(
+                data.get(name, legacy_reproduction), legacy_reproduction
+            )
+        return cls(**values)
 
     def to_dict(self) -> dict[str, int | float]:
-        return {
-            "columns": self.columns,
-            "rows": self.rows,
-            "herbivores": self.herbivores,
-            "predators": self.predators,
-            "grass_regrowth": self.grass_regrowth,
-            "herbivore_reproduction": self.herbivore_reproduction,
-            "predator_reproduction": self.predator_reproduction,
-            "herbivore_starvation": self.herbivore_starvation,
-            "predator_starvation": self.predator_starvation,
-            "herbivore_speed": self.herbivore_speed,
-            "predator_speed": self.predator_speed,
-        }
+        return {name: getattr(self, name) for name in SETTING_KEYS}
 
 
 class SettingsStore:

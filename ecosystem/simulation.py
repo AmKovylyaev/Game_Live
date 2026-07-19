@@ -10,7 +10,7 @@ from typing import Iterable, Optional, TypeVar
 
 from .animals import Animal, Herbivore, Predator
 from .constants import HISTORY_INTERVAL, MAX_HISTORY_POINTS, PREDATOR_ONLY_DELAY
-from .grass import Cell, GrassField
+from .grass import GrassField
 from .settings import GameSettings
 
 Target = TypeVar("Target")
@@ -27,9 +27,9 @@ class Simulation:
         self.herbivores = [Herbivore(*self._random_position()) for _ in range(settings.herbivores)]
         self.predators = [Predator(*self._random_position()) for _ in range(settings.predators)]
         self.elapsed = 0.0
-        self.total_grass_eaten = 0
-        self.total_prey_eaten = 0
-        self.history: list[tuple[float, int, int]] = [(0.0, len(self.herbivores), len(self.predators))]
+        self.history: list[tuple[float, int, int]] = [
+            (0.0, len(self.herbivores), len(self.predators))
+        ]
         self._history_timer = 0.0
         self.predator_only_started: Optional[float] = None
         self.finished = False
@@ -81,8 +81,9 @@ class Simulation:
             if target is None:
                 continue
             cell = target
-            if self._move_towards(herbivore, cell[0] + 0.5, cell[1] + 0.5, dt) and self.grass.consume(cell):
-                self.total_grass_eaten += 1
+            if self._move_towards(
+                herbivore, cell[0] + 0.5, cell[1] + 0.5, dt
+            ) and self.grass.consume(cell):
                 self._handle_meal(herbivore)
 
     def _move_predators(self, dt: float) -> None:
@@ -99,7 +100,6 @@ class Simulation:
             prey = target
             if self._move_towards(predator, prey.x, prey.y, dt) and prey in self.herbivores:
                 self.herbivores.remove(prey)
-                self.total_prey_eaten += 1
                 self._handle_meal(predator)
 
     def _handle_meal(self, animal: Animal) -> None:
@@ -136,7 +136,9 @@ class Simulation:
         return distance <= speed * dt + 0.12
 
     @staticmethod
-    def _choose_target(animal: Animal, candidates: Iterable[tuple[float, float, Target]]) -> Optional[Target]:
+    def _choose_target(
+        animal: Animal, candidates: Iterable[tuple[float, float, Target]]
+    ) -> Optional[Target]:
         nearest = nsmallest(
             5,
             ((math.hypot(x - animal.x, y - animal.y), candidate) for x, y, candidate in candidates),
@@ -146,7 +148,7 @@ class Simulation:
             return None
         weights = [1.0 / max(distance, 0.05) for distance, _ in nearest]
         choice = random.random() * sum(weights)
-        for weight, (_, candidate) in zip(weights, nearest):
+        for weight, (_, candidate) in zip(weights, nearest, strict=True):
             choice -= weight
             if choice <= 0:
                 return candidate
@@ -154,10 +156,14 @@ class Simulation:
 
     def _remove_starved_animals(self) -> None:
         self.herbivores = [
-            animal for animal in self.herbivores if animal.hungry_for < animal.starvation_limit(self.settings)
+            animal
+            for animal in self.herbivores
+            if animal.hungry_for < animal.starvation_limit(self.settings)
         ]
         self.predators = [
-            animal for animal in self.predators if animal.hungry_for < animal.starvation_limit(self.settings)
+            animal
+            for animal in self.predators
+            if animal.hungry_for < animal.starvation_limit(self.settings)
         ]
 
     def _record_history(self, dt: float, *, force: bool = False) -> None:
