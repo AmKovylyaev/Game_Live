@@ -22,7 +22,8 @@ def blend_colors(start: str, end: str, amount: float) -> str:
     start_rgb = tuple(int(start[index : index + 2], 16) for index in (1, 3, 5))
     end_rgb = tuple(int(end[index : index + 2], 16) for index in (1, 3, 5))
     return "#" + "".join(
-        f"{round(first + (second - first) * amount):02x}" for first, second in zip(start_rgb, end_rgb)
+        f"{round(first + (second - first) * amount):02x}"
+        for first, second in zip(start_rgb, end_rgb, strict=True)
     )
 
 
@@ -47,7 +48,9 @@ class CanvasRenderer:
             if field.is_ready(cell):
                 state, color = GRASS_GROWTH_STEPS, GRASS_COLOR
             else:
-                stage = min(GRASS_GROWTH_STEPS - 1, int(field.growth_value(cell) * GRASS_GROWTH_STEPS))
+                stage = min(
+                    GRASS_GROWTH_STEPS - 1, int(field.growth_value(cell) * GRASS_GROWTH_STEPS)
+                )
                 state = stage
                 color = blend_colors(GRASS_RECOVERY_START, GRASS_COLOR, stage / GRASS_GROWTH_STEPS)
             item = self.grass_items.get(cell)
@@ -78,7 +81,12 @@ class CanvasRenderer:
             body, eye = self.animal_items.get(animal_id, (None, None))
             if body is None:
                 body = self.canvas.create_rectangle(
-                    left, top, max(left + 2, right), max(top + 2, bottom), fill=color, outline="#102117"
+                    left,
+                    top,
+                    max(left + 2, right),
+                    max(top + 2, bottom),
+                    fill=color,
+                    outline="#102117",
                 )
                 if self.cell_size >= 12:
                     eye_size = max(1, self.cell_size // 10)
@@ -96,7 +104,9 @@ class CanvasRenderer:
                 self.canvas.itemconfigure(body, fill=color)
             if eye is not None:
                 eye_size = max(1, self.cell_size // 10)
-                self.canvas.coords(eye, right - eye_size * 2, top + eye_size, right - eye_size, top + eye_size * 2)
+                self.canvas.coords(
+                    eye, right - eye_size * 2, top + eye_size, right - eye_size, top + eye_size * 2
+                )
 
         for animal_id in set(self.animal_items) - live_ids:
             body, eye = self.animal_items.pop(animal_id)

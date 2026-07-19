@@ -26,10 +26,16 @@ class Animal:
     speed_effect_for: float = 0.0
     target: Optional[object] = None
 
-    name: ClassVar[str]
+    speed_setting: ClassVar[str]
+    starvation_setting: ClassVar[str]
+    reproduction_setting: ClassVar[str]
+    speed_multiplier: ClassVar[float]
+    meal_effect_duration: ClassVar[float]
+    food_needed: ClassVar[int]
+    reproduction_window: ClassVar[float]
 
     def effective_speed(self, settings: "GameSettings") -> float:
-        speed = self.base_speed(settings)
+        speed = getattr(settings, self.speed_setting)
         return speed * self.speed_multiplier if self.speed_effect_for > 0 else speed
 
     def advance_timers(self, dt: float) -> None:
@@ -49,87 +55,30 @@ class Animal:
             return True
         return False
 
-    def base_speed(self, settings: "GameSettings") -> float:
-        raise NotImplementedError
-
     def starvation_limit(self, settings: "GameSettings") -> float:
-        raise NotImplementedError
-
-    @property
-    def speed_multiplier(self) -> float:
-        raise NotImplementedError
-
-    @property
-    def meal_effect_duration(self) -> float:
-        raise NotImplementedError
-
-    @property
-    def food_needed(self) -> int:
-        raise NotImplementedError
-
-    @property
-    def reproduction_window(self) -> float:
-        raise NotImplementedError
+        return getattr(settings, self.starvation_setting)
 
     def reproduction_coefficient(self, settings: "GameSettings") -> float:
-        raise NotImplementedError
+        return getattr(settings, self.reproduction_setting)
 
 
 @dataclass(slots=True, eq=False)
 class Herbivore(Animal):
-    name: ClassVar[str] = "herbivore"
-
-    def base_speed(self, settings: "GameSettings") -> float:
-        return settings.herbivore_speed
-
-    def starvation_limit(self, settings: "GameSettings") -> float:
-        return settings.herbivore_starvation
-
-    @property
-    def speed_multiplier(self) -> float:
-        return 1.25
-
-    @property
-    def meal_effect_duration(self) -> float:
-        return 1.5
-
-    @property
-    def food_needed(self) -> int:
-        return HERBIVORE_FOOD_NEEDED
-
-    @property
-    def reproduction_window(self) -> float:
-        return HERBIVORE_REPRODUCTION_WINDOW
-
-    def reproduction_coefficient(self, settings: "GameSettings") -> float:
-        return settings.herbivore_reproduction
+    speed_setting: ClassVar[str] = "herbivore_speed"
+    starvation_setting: ClassVar[str] = "herbivore_starvation"
+    reproduction_setting: ClassVar[str] = "herbivore_reproduction"
+    speed_multiplier: ClassVar[float] = 1.25
+    meal_effect_duration: ClassVar[float] = 1.5
+    food_needed: ClassVar[int] = HERBIVORE_FOOD_NEEDED
+    reproduction_window: ClassVar[float] = HERBIVORE_REPRODUCTION_WINDOW
 
 
 @dataclass(slots=True, eq=False)
 class Predator(Animal):
-    name: ClassVar[str] = "predator"
-
-    def base_speed(self, settings: "GameSettings") -> float:
-        return settings.predator_speed
-
-    def starvation_limit(self, settings: "GameSettings") -> float:
-        return settings.predator_starvation
-
-    @property
-    def speed_multiplier(self) -> float:
-        return 0.5
-
-    @property
-    def meal_effect_duration(self) -> float:
-        return 1.0
-
-    @property
-    def food_needed(self) -> int:
-        return PREDATOR_FOOD_NEEDED
-
-    @property
-    def reproduction_window(self) -> float:
-        return PREDATOR_REPRODUCTION_WINDOW
-
-    def reproduction_coefficient(self, settings: "GameSettings") -> float:
-        return settings.predator_reproduction
+    speed_setting: ClassVar[str] = "predator_speed"
+    starvation_setting: ClassVar[str] = "predator_starvation"
+    reproduction_setting: ClassVar[str] = "predator_reproduction"
+    speed_multiplier: ClassVar[float] = 0.5
+    meal_effect_duration: ClassVar[float] = 1.0
+    food_needed: ClassVar[int] = PREDATOR_FOOD_NEEDED
+    reproduction_window: ClassVar[float] = PREDATOR_REPRODUCTION_WINDOW

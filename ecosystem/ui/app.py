@@ -4,9 +4,8 @@ from __future__ import annotations
 
 import time
 import tkinter as tk
-from typing import Optional
-
 from tkinter import messagebox
+from typing import Optional
 
 from ..constants import (
     EMPTY_COLOR,
@@ -18,9 +17,38 @@ from ..constants import (
     TEXT_COLOR,
     TICK_MS,
 )
-from ..settings import GameSettings, SettingsStore
+from ..settings import SETTING_KEYS, SETTING_RULES, GameSettings, SettingsStore
 from ..simulation import Simulation
 from .renderer import CanvasRenderer
+
+SLIDER_SECTIONS = (
+    (
+        "ОБЩИЕ",
+        (
+            ("columns", "Ширина поля, клеток"),
+            ("rows", "Высота поля, клеток"),
+            ("grass_regrowth", "Восстановление травы, секунд"),
+        ),
+    ),
+    (
+        "ТРАВОЯДНЫЕ",
+        (
+            ("herbivores", "Количество на старте"),
+            ("herbivore_reproduction", "Коэффициент размножения"),
+            ("herbivore_starvation", "Голод, секунд до смерти"),
+            ("herbivore_speed", "Скорость передвижения"),
+        ),
+    ),
+    (
+        "ХИЩНИКИ",
+        (
+            ("predators", "Количество на старте"),
+            ("predator_reproduction", "Коэффициент размножения"),
+            ("predator_starvation", "Голод, секунд до смерти"),
+            ("predator_speed", "Скорость передвижения"),
+        ),
+    ),
+)
 
 
 class EcosystemApp:
@@ -33,7 +61,6 @@ class EcosystemApp:
         self.settings = self.store.load()
         self.simulation: Optional[Simulation] = None
         self.renderer: Optional[CanvasRenderer] = None
-        self.canvas: Optional[tk.Canvas] = None
         self.settings_frame: Optional[tk.Frame] = None
         self.game_frame: Optional[tk.Frame] = None
         self.after_id: Optional[str] = None
@@ -55,7 +82,7 @@ class EcosystemApp:
         self.show_settings()
 
     def _on_close(self) -> None:
-        if len(self.setting_vars) == 11:
+        if self._has_settings_form():
             self.settings = self._settings_from_vars()
         self.store.save(self.settings)
         self.root.destroy()
@@ -67,23 +94,14 @@ class EcosystemApp:
             old_frame.pack_forget()
             self.root.after_idle(old_frame.destroy)
 
+    def _has_settings_form(self) -> bool:
+        return all(key in self.setting_vars for key in SETTING_KEYS)
+
     def _settings_from_vars(self) -> GameSettings:
-        return GameSettings(
-            columns=int(self.setting_vars["columns"].get()),
-            rows=int(self.setting_vars["rows"].get()),
-            herbivores=int(self.setting_vars["herbivores"].get()),
-            predators=int(self.setting_vars["predators"].get()),
-            grass_regrowth=float(self.setting_vars["grass_regrowth"].get()),
-            herbivore_reproduction=float(self.setting_vars["herbivore_reproduction"].get()),
-            predator_reproduction=float(self.setting_vars["predator_reproduction"].get()),
-            herbivore_starvation=float(self.setting_vars["herbivore_starvation"].get()),
-            predator_starvation=float(self.setting_vars["predator_starvation"].get()),
-            herbivore_speed=float(self.setting_vars["herbivore_speed"].get()),
-            predator_speed=float(self.setting_vars["predator_speed"].get()),
-        )
+        return GameSettings(**{key: self.setting_vars[key].get() for key in SETTING_KEYS})
 
     def _settings_changed(self, _value: str = "") -> None:
-        if len(self.setting_vars) == 11:
+        if self._has_settings_form():
             self.settings = self._settings_from_vars()
             self.store.save(self.settings)
 
@@ -92,7 +110,6 @@ class EcosystemApp:
             self.root.after_cancel(self.after_id)
             self.after_id = None
         self._detach_game_frame()
-        self.canvas = None
         self.renderer = None
         self.simulation = None
         self.setting_vars = {}
@@ -100,9 +117,13 @@ class EcosystemApp:
         frame = tk.Frame(self.root, bg=PANEL_COLOR, padx=32, pady=28)
         frame.pack(fill="both", expand=True)
         self.settings_frame = frame
-        tk.Label(frame, text="ПИКСЕЛЬНАЯ ЭКОСИСТЕМА", bg=PANEL_COLOR, fg=TEXT_COLOR, font=("TkFixedFont", 19, "bold")).pack(
-            pady=(18, 6)
-        )
+        tk.Label(
+            frame,
+            text="ПИКСЕЛЬНАЯ ЭКОСИСТЕМА",
+            bg=PANEL_COLOR,
+            fg=TEXT_COLOR,
+            font=("TkFixedFont", 19, "bold"),
+        ).pack(pady=(18, 6))
         tk.Label(
             frame,
             text="Настрой поле и запусти маленькую пищевую цепочку",
@@ -112,12 +133,16 @@ class EcosystemApp:
 
         form = tk.Frame(frame, bg=PANEL_COLOR)
         form.pack()
-        for column, (title, specs) in enumerate(self._slider_sections()):
+        for column, (title, specs) in enumerate(SLIDER_SECTIONS):
             section = tk.Frame(form, bg=PANEL_COLOR, padx=12)
             section.grid(row=0, column=column, sticky="n")
-            tk.Label(section, text=title, bg=PANEL_COLOR, fg=GRASS_COLOR, font=("TkFixedFont", 10, "bold")).pack(
-                anchor="w", pady=(0, 5)
-            )
+            tk.Label(
+                section,
+                text=title,
+                bg=PANEL_COLOR,
+                fg=GRASS_COLOR,
+                font=("TkFixedFont", 10, "bold"),
+            ).pack(anchor="w", pady=(0, 5))
             for spec in specs:
                 self._add_slider(section, *spec)
 
@@ -142,40 +167,18 @@ class EcosystemApp:
         ).pack()
         self.root.bind("<Return>", lambda _event: self._start_from_form())
 
-    @staticmethod
-    def _slider_sections():
-        return [
-            ("ОБЩИЕ", [
-                ("columns", "Ширина поля, клеток", 8, 100, 1, True),
-                ("rows", "Высота поля, клеток", 8, 70, 1, True),
-                ("grass_regrowth", "Восстановление травы, секунд", 3, 30, 1, False),
-            ]),
-            ("ТРАВОЯДНЫЕ", [
-                ("herbivores", "Количество на старте", 0, 300, 1, True),
-                ("herbivore_reproduction", "Коэффициент размножения", 0.1, 3, 0.1, False),
-                ("herbivore_starvation", "Голод, секунд до смерти", 5, 15, 1, False),
-                ("herbivore_speed", "Скорость передвижения", 0.5, 6, 0.1, False),
-            ]),
-            ("ХИЩНИКИ", [
-                ("predators", "Количество на старте", 0, 150, 1, True),
-                ("predator_reproduction", "Коэффициент размножения", 0.1, 3, 0.1, False),
-                ("predator_starvation", "Голод, секунд до смерти", 5, 15, 1, False),
-                ("predator_speed", "Скорость передвижения", 0.5, 8, 0.1, False),
-            ]),
-        ]
-
     def _add_slider(
         self,
         parent: tk.Frame,
         key: str,
         label: str,
-        low: float,
-        high: float,
-        resolution: float,
-        integer: bool,
     ) -> None:
+        rule = SETTING_RULES[key]
+        low, high, resolution, integer = rule.minimum, rule.maximum, rule.step, rule.integer
         value = getattr(self.settings, key)
-        variable: tk.Variable = tk.IntVar(value=int(value)) if integer else tk.DoubleVar(value=float(value))
+        variable: tk.Variable = (
+            tk.IntVar(value=int(value)) if integer else tk.DoubleVar(value=float(value))
+        )
         self.setting_vars[key] = variable
         slot = tk.Frame(parent, bg=PANEL_COLOR)
         slot.pack(fill="x", pady=(9, 15))
@@ -205,8 +208,12 @@ class EcosystemApp:
         range_row.pack(fill="x")
         low_text = str(int(low)) if integer or float(low).is_integer() else f"{low:g}"
         high_text = str(int(high)) if integer or float(high).is_integer() else f"{high:g}"
-        tk.Label(range_row, text=f"мин. {low_text}", bg=PANEL_COLOR, fg=MUTED_COLOR).pack(side="left")
-        tk.Label(range_row, text=f"макс. {high_text}", bg=PANEL_COLOR, fg=MUTED_COLOR).pack(side="right")
+        tk.Label(range_row, text=f"мин. {low_text}", bg=PANEL_COLOR, fg=MUTED_COLOR).pack(
+            side="left"
+        )
+        tk.Label(range_row, text=f"макс. {high_text}", bg=PANEL_COLOR, fg=MUTED_COLOR).pack(
+            side="right"
+        )
 
         def move_with_key(direction: int) -> str:
             scale.focus_set()
@@ -252,14 +259,26 @@ class EcosystemApp:
         cell_size = max(5, min(24, 900 // self.simulation.columns, 680 // self.simulation.rows))
         top = tk.Frame(frame, bg=PANEL_COLOR, padx=12, pady=8)
         top.pack(fill="x")
-        tk.Label(top, text="ПИКСЕЛЬНАЯ ЭКОСИСТЕМА", bg=PANEL_COLOR, fg=TEXT_COLOR, font=("TkFixedFont", 11, "bold")).pack(
-            side="left", fill="x", expand=True
+        tk.Label(
+            top,
+            text="ПИКСЕЛЬНАЯ ЭКОСИСТЕМА",
+            bg=PANEL_COLOR,
+            fg=TEXT_COLOR,
+            font=("TkFixedFont", 11, "bold"),
+        ).pack(side="left", fill="x", expand=True)
+        self.speed_button = self._toolbar_button(
+            top, "▶ ×2", self._toggle_game_speed, "#b9dff0", "#102117"
         )
-        self.speed_button = self._toolbar_button(top, "▶ ×2", self._toggle_game_speed, "#b9dff0", "#102117")
         self.speed_button.pack(side="right", padx=(6, 0))
-        self._toolbar_button(top, "Завершить", self._force_finish, "#f3b6ae", "#331211").pack(side="right", padx=(6, 0))
-        self._toolbar_button(top, "Пауза", self._toggle_pause, "#b7e3b0", "#102117").pack(side="right", padx=(6, 0))
-        self._toolbar_button(top, "Новые настройки", self.show_settings, "#b7e3b0", "#102117").pack(side="right")
+        self._toolbar_button(top, "Завершить", self._force_finish, "#f3b6ae", "#331211").pack(
+            side="right", padx=(6, 0)
+        )
+        self._toolbar_button(top, "Пауза", self._toggle_pause, "#b7e3b0", "#102117").pack(
+            side="right", padx=(6, 0)
+        )
+        self._toolbar_button(top, "Новые настройки", self.show_settings, "#b7e3b0", "#102117").pack(
+            side="right"
+        )
 
         content = tk.Frame(frame, bg=PANEL_COLOR)
         content.pack(fill="both", expand=True, padx=12, pady=(0, 8))
@@ -269,7 +288,7 @@ class EcosystemApp:
         board_area.pack(side="left", fill="both", expand=True)
         holder = tk.Frame(board_area, bg="#0d1510")
         holder.pack(expand=True)
-        self.canvas = tk.Canvas(
+        canvas = tk.Canvas(
             holder,
             width=self.simulation.columns * cell_size,
             height=self.simulation.rows * cell_size,
@@ -277,8 +296,8 @@ class EcosystemApp:
             highlightthickness=2,
             highlightbackground="#4f7657",
         )
-        self.canvas.pack()
-        self.renderer = CanvasRenderer(self.canvas, self.simulation, cell_size)
+        canvas.pack()
+        self.renderer = CanvasRenderer(canvas, self.simulation, cell_size)
         self.renderer.draw()
         tk.Label(
             board_area,
@@ -289,7 +308,9 @@ class EcosystemApp:
         ).pack()
 
     @staticmethod
-    def _toolbar_button(parent: tk.Frame, text: str, command, background: str, foreground: str) -> tk.Button:
+    def _toolbar_button(
+        parent: tk.Frame, text: str, command, background: str, foreground: str
+    ) -> tk.Button:
         return tk.Button(
             parent,
             text=text,
@@ -308,19 +329,59 @@ class EcosystemApp:
         panel.pack_propagate(False)
 
         def group(title: str) -> tk.LabelFrame:
-            box = tk.LabelFrame(panel, text=title, bg=PANEL_COLOR, fg=GRASS_COLOR, padx=10, pady=8, font=("TkFixedFont", 10, "bold"))
+            box = tk.LabelFrame(
+                panel,
+                text=title,
+                bg=PANEL_COLOR,
+                fg=GRASS_COLOR,
+                padx=10,
+                pady=8,
+                font=("TkFixedFont", 10, "bold"),
+            )
             box.pack(fill="x", pady=(0, 12))
             return box
 
         state = group("СОСТОЯНИЕ ИГРЫ")
-        tk.Label(state, textvariable=self.state_var, width=24, anchor="w", bg=PANEL_COLOR, fg=TEXT_COLOR).pack()
+        tk.Label(
+            state, textvariable=self.state_var, width=24, anchor="w", bg=PANEL_COLOR, fg=TEXT_COLOR
+        ).pack()
         timing = group("СКОРОСТЬ + ВРЕМЯ")
-        tk.Label(timing, textvariable=self.game_speed_var, width=24, anchor="w", bg=PANEL_COLOR, fg=TEXT_COLOR).pack()
-        tk.Label(timing, textvariable=self.time_var, width=24, anchor="w", bg=PANEL_COLOR, fg=TEXT_COLOR).pack()
+        tk.Label(
+            timing,
+            textvariable=self.game_speed_var,
+            width=24,
+            anchor="w",
+            bg=PANEL_COLOR,
+            fg=TEXT_COLOR,
+        ).pack()
+        tk.Label(
+            timing, textvariable=self.time_var, width=24, anchor="w", bg=PANEL_COLOR, fg=TEXT_COLOR
+        ).pack()
         counts = group("СЧЁТЧИКИ")
-        tk.Label(counts, textvariable=self.herbivore_count_var, width=24, anchor="w", bg=PANEL_COLOR, fg=HERBIVORE_COLOR).pack()
-        tk.Label(counts, textvariable=self.predator_count_var, width=24, anchor="w", bg=PANEL_COLOR, fg=PREDATOR_COLOR).pack()
-        tk.Label(counts, textvariable=self.grass_count_var, width=24, anchor="w", bg=PANEL_COLOR, fg=GRASS_COLOR).pack()
+        tk.Label(
+            counts,
+            textvariable=self.herbivore_count_var,
+            width=24,
+            anchor="w",
+            bg=PANEL_COLOR,
+            fg=HERBIVORE_COLOR,
+        ).pack()
+        tk.Label(
+            counts,
+            textvariable=self.predator_count_var,
+            width=24,
+            anchor="w",
+            bg=PANEL_COLOR,
+            fg=PREDATOR_COLOR,
+        ).pack()
+        tk.Label(
+            counts,
+            textvariable=self.grass_count_var,
+            width=24,
+            anchor="w",
+            bg=PANEL_COLOR,
+            fg=GRASS_COLOR,
+        ).pack()
 
     def _update_status(self) -> None:
         assert self.simulation is not None
@@ -369,7 +430,6 @@ class EcosystemApp:
 
     def _show_game_over(self) -> None:
         self._detach_game_frame()
-        self.canvas = None
         self.renderer = None
         self.speed_button = None
         assert self.simulation is not None
@@ -377,11 +437,21 @@ class EcosystemApp:
         frame = tk.Frame(self.root, bg=PANEL_COLOR, padx=24, pady=20)
         frame.pack(fill="both", expand=True)
         self.game_frame = frame
-        tk.Label(frame, text="ИГРА ОКОНЧЕНА", bg=PANEL_COLOR, fg=TEXT_COLOR, font=("TkFixedFont", 19, "bold")).pack(pady=(4, 4))
-        tk.Label(frame, text=self.simulation.finish_reason, bg=PANEL_COLOR, fg=MUTED_COLOR).pack(pady=(0, 10))
+        tk.Label(
+            frame,
+            text="ИГРА ОКОНЧЕНА",
+            bg=PANEL_COLOR,
+            fg=TEXT_COLOR,
+            font=("TkFixedFont", 19, "bold"),
+        ).pack(pady=(4, 4))
+        tk.Label(frame, text=self.simulation.finish_reason, bg=PANEL_COLOR, fg=MUTED_COLOR).pack(
+            pady=(0, 10)
+        )
         graph = tk.Canvas(frame, bg="#101a14", highlightthickness=1, highlightbackground="#4f7657")
         graph.pack(fill="both", expand=True, padx=8, pady=4)
-        graph.bind("<Configure>", lambda event: self._draw_history_graph(graph, event.width, event.height))
+        graph.bind(
+            "<Configure>", lambda event: self._draw_history_graph(graph, event.width, event.height)
+        )
         self._draw_history_graph(graph, 760, 420)
         tk.Button(
             frame,
@@ -404,21 +474,34 @@ class EcosystemApp:
         plot_width, plot_height = max(1, width - left - right), max(1, height - top - bottom)
         max_time = max(1.0, history[-1][0])
         max_count = max(1, max(max(point[1], point[2]) for point in history))
-        graph.create_text(width // 2, 12, text="Численность животных во времени", fill=TEXT_COLOR, font=("TkDefaultFont", 11, "bold"))
+        graph.create_text(
+            width // 2,
+            12,
+            text="Численность животных во времени",
+            fill=TEXT_COLOR,
+            font=("TkDefaultFont", 11, "bold"),
+        )
         for index in range(6):
             fraction = index / 5
             y = bottom + top + plot_height * (1 - fraction)
             graph.create_line(left, y, width - right, y, fill="#294233")
-            graph.create_text(left - 10, y, text=str(round(max_count * fraction)), fill=MUTED_COLOR, anchor="e")
+            graph.create_text(
+                left - 10, y, text=str(round(max_count * fraction)), fill=MUTED_COLOR, anchor="e"
+            )
         axis_bottom = top + plot_height
         graph.create_line(left, top, left, axis_bottom, fill="#71917a", width=2)
         graph.create_line(left, axis_bottom, width - right, axis_bottom, fill="#71917a", width=2)
         graph.create_text(left, axis_bottom + 22, text="0 с", fill=MUTED_COLOR, anchor="w")
-        graph.create_text(width - right, axis_bottom + 22, text=f"{max_time:.1f} с", fill=MUTED_COLOR, anchor="e")
+        graph.create_text(
+            width - right, axis_bottom + 22, text=f"{max_time:.1f} с", fill=MUTED_COLOR, anchor="e"
+        )
 
         def point(index: int, count: int) -> tuple[float, float]:
             elapsed = history[index][0]
-            return left + elapsed / max_time * plot_width, top + plot_height - count / max_count * plot_height
+            return (
+                left + elapsed / max_time * plot_width,
+                top + plot_height - count / max_count * plot_height,
+            )
 
         herbivore_points: list[float] = []
         predator_points: list[float] = []
@@ -431,7 +514,11 @@ class EcosystemApp:
         graph.create_line(*herbivore_points, fill=HERBIVORE_COLOR, width=3, smooth=True)
         graph.create_line(*predator_points, fill=PREDATOR_COLOR, width=3, smooth=True)
         legend_y = height - 18
-        graph.create_rectangle(left, legend_y - 5, left + 12, legend_y + 7, fill=HERBIVORE_COLOR, outline="")
+        graph.create_rectangle(
+            left, legend_y - 5, left + 12, legend_y + 7, fill=HERBIVORE_COLOR, outline=""
+        )
         graph.create_text(left + 20, legend_y + 1, text="Травоядные", fill=TEXT_COLOR, anchor="w")
-        graph.create_rectangle(left + 150, legend_y - 5, left + 162, legend_y + 7, fill=PREDATOR_COLOR, outline="")
+        graph.create_rectangle(
+            left + 150, legend_y - 5, left + 162, legend_y + 7, fill=PREDATOR_COLOR, outline=""
+        )
         graph.create_text(left + 170, legend_y + 1, text="Хищники", fill=TEXT_COLOR, anchor="w")
