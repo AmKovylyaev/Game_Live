@@ -10,6 +10,7 @@ from ecosystem.animals import Herbivore, Predator
 from ecosystem.grass import GrassField
 from ecosystem.settings import SETTING_KEYS, GameSettings, SettingsStore
 from ecosystem.simulation import Simulation
+from ecosystem.ui.app import SLIDER_SECTIONS
 
 
 class GameSettingsTests(unittest.TestCase):
@@ -100,3 +101,12 @@ class SimulationSmokeTests(unittest.TestCase):
         self.assertGreaterEqual(herbivores, 0)
         self.assertGreaterEqual(predators, 0)
         self.assertGreaterEqual(grass, 0)
+
+
+class SettingsUiTests(unittest.TestCase):
+    def test_settings_form_exposes_every_saved_setting_once(self) -> None:
+        visible_keys = [
+            key for _title, _subtitle, specs in SLIDER_SECTIONS for key, _label in specs
+        ]
+
+        self.assertCountEqual(visible_keys, SETTING_KEYS)

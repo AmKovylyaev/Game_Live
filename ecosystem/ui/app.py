@@ -21,9 +21,15 @@ from ..settings import SETTING_KEYS, SETTING_RULES, GameSettings, SettingsStore
 from ..simulation import Simulation
 from .renderer import CanvasRenderer
 
+CARD_COLOR = "#1d2d24"
+CARD_BORDER_COLOR = "#395842"
+CARD_SUBTLE_COLOR = "#294233"
+BUTTON_TEXT_COLOR = "#102117"
+
 SLIDER_SECTIONS = (
     (
-        "ОБЩИЕ",
+        "СРЕДА",
+        "Размер поля и восстановление травы",
         (
             ("columns", "Ширина поля, клеток"),
             ("rows", "Высота поля, клеток"),
@@ -32,6 +38,7 @@ SLIDER_SECTIONS = (
     ),
     (
         "ТРАВОЯДНЫЕ",
+        "Ищут траву, едят и размножаются",
         (
             ("herbivores", "Количество на старте"),
             ("herbivore_reproduction", "Коэффициент размножения"),
@@ -41,6 +48,7 @@ SLIDER_SECTIONS = (
     ),
     (
         "ХИЩНИКИ",
+        "Охотятся на травоядных и выживают без добычи",
         (
             ("predators", "Количество на старте"),
             ("predator_reproduction", "Коэффициент размножения"),
@@ -56,7 +64,8 @@ class EcosystemApp:
         self.root = root
         self.root.title("Пиксельная экосистема")
         self.root.configure(bg=PANEL_COLOR)
-        self.root.minsize(1000, 720)
+        self.root.geometry("1120x780")
+        self.root.minsize(980, 720)
         self.store = SettingsStore()
         self.settings = self.store.load()
         self.simulation: Optional[Simulation] = None
@@ -68,7 +77,10 @@ class EcosystemApp:
         self.paused = False
         self.game_speed = 1.0
         self.speed_button: Optional[tk.Button] = None
+        self.start_button: Optional[tk.Button] = None
         self.setting_vars: dict[str, tk.Variable] = {}
+        self.setting_value_vars: dict[str, tk.StringVar] = {}
+        self._updating_settings = False
 
         self.state_var = tk.StringVar()
         self.game_speed_var = tk.StringVar()
@@ -76,6 +88,8 @@ class EcosystemApp:
         self.herbivore_count_var = tk.StringVar()
         self.predator_count_var = tk.StringVar()
         self.grass_count_var = tk.StringVar()
+        self.settings_summary_var = tk.StringVar()
+        self.settings_hint_var = tk.StringVar()
 
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
         self.store.save(self.settings)
@@ -94,78 +108,173 @@ class EcosystemApp:
             old_frame.pack_forget()
             self.root.after_idle(old_frame.destroy)
 
+    def _detach_settings_frame(self) -> None:
+        old_frame = self.settings_frame
+        self.settings_frame = None
+        if old_frame is not None:
+            old_frame.destroy()
+
     def _has_settings_form(self) -> bool:
         return all(key in self.setting_vars for key in SETTING_KEYS)
 
     def _settings_from_vars(self) -> GameSettings:
         return GameSettings(**{key: self.setting_vars[key].get() for key in SETTING_KEYS})
 
-    def _settings_changed(self, _value: str = "") -> None:
-        if self._has_settings_form():
-            self.settings = self._settings_from_vars()
-            self.store.save(self.settings)
+    def _settings_changed(self, *_args: str) -> None:
+        if self._updating_settings or not self._has_settings_form():
+            return
+        self.settings = self._settings_from_vars()
+        self.store.save(self.settings)
+        self._update_settings_feedback()
+
+    def _update_settings_feedback(self) -> None:
+        settings = self.settings
+        total_animals = settings.herbivores + settings.predators
+        self.settings_summary_var.set(
+            f"Поле {settings.columns} × {settings.rows} · на старте {total_animals} животных"
+        )
+        has_animals = total_animals > 0
+        self.settings_hint_var.set(
+            "Сохраняется автоматически · стрелки — точная настройка"
+            if has_animals
+            else "Добавьте хотя бы одно животное, чтобы начать симуляцию"
+        )
+        if self.start_button is not None:
+            self.start_button.configure(state="normal" if has_animals else "disabled")
+
+    def _reset_settings(self) -> None:
+        defaults = GameSettings()
+        self._updating_settings = True
+        try:
+            for key in SETTING_KEYS:
+                self.setting_vars[key].set(getattr(defaults, key))
+        finally:
+            self._updating_settings = False
+        self._settings_changed()
 
     def show_settings(self) -> None:
         if self.after_id is not None:
             self.root.after_cancel(self.after_id)
             self.after_id = None
+        self._detach_settings_frame()
         self._detach_game_frame()
         self.renderer = None
         self.simulation = None
         self.setting_vars = {}
+        self.setting_value_vars = {}
+        self.start_button = None
 
-        frame = tk.Frame(self.root, bg=PANEL_COLOR, padx=32, pady=28)
+        frame = tk.Frame(self.root, bg=PANEL_COLOR, padx=36, pady=30)
         frame.pack(fill="both", expand=True)
         self.settings_frame = frame
+        header = tk.Frame(frame, bg=PANEL_COLOR)
+        header.pack(fill="x", pady=(0, 20))
         tk.Label(
-            frame,
-            text="ПИКСЕЛЬНАЯ ЭКОСИСТЕМА",
+            header,
+            text="СИМУЛЯТОР ЭКОСИСТЕМЫ",
+            bg=PANEL_COLOR,
+            fg=GRASS_COLOR,
+            font=("TkDefaultFont", 9, "bold"),
+        ).pack(anchor="w")
+        tk.Label(
+            header,
+            text="Собери свою пищевую цепочку",
             bg=PANEL_COLOR,
             fg=TEXT_COLOR,
-            font=("TkFixedFont", 19, "bold"),
-        ).pack(pady=(18, 6))
+            font=("TkDefaultFont", 22, "bold"),
+        ).pack(anchor="w", pady=(3, 4))
         tk.Label(
-            frame,
-            text="Настрой поле и запусти маленькую пищевую цепочку",
+            header,
+            text="Выберите параметры мира — их можно изменить перед следующим запуском.",
             bg=PANEL_COLOR,
             fg=MUTED_COLOR,
-        ).pack(pady=(0, 22))
+        ).pack(anchor="w")
 
         form = tk.Frame(frame, bg=PANEL_COLOR)
-        form.pack()
-        for column, (title, specs) in enumerate(SLIDER_SECTIONS):
-            section = tk.Frame(form, bg=PANEL_COLOR, padx=12)
-            section.grid(row=0, column=column, sticky="n")
+        form.pack(fill="both", expand=True)
+        for column, (title, subtitle, specs) in enumerate(SLIDER_SECTIONS):
+            form.grid_columnconfigure(column, weight=1, uniform="settings-card")
+            section = tk.Frame(
+                form,
+                bg=CARD_COLOR,
+                padx=18,
+                pady=16,
+                highlightthickness=1,
+                highlightbackground=CARD_BORDER_COLOR,
+            )
+            section.grid(row=0, column=column, sticky="nsew", padx=6)
             tk.Label(
                 section,
                 text=title,
-                bg=PANEL_COLOR,
+                bg=CARD_COLOR,
                 fg=GRASS_COLOR,
-                font=("TkFixedFont", 10, "bold"),
-            ).pack(anchor="w", pady=(0, 5))
+                font=("TkDefaultFont", 10, "bold"),
+            ).pack(anchor="w")
+            tk.Label(
+                section,
+                text=subtitle,
+                bg=CARD_COLOR,
+                fg=MUTED_COLOR,
+                anchor="w",
+                justify="left",
+                wraplength=260,
+            ).pack(anchor="w", pady=(3, 10))
             for spec in specs:
                 self._add_slider(section, *spec)
 
-        tk.Button(
+        launch_panel = tk.Frame(
             frame,
-            text="▶  НАЧАТЬ ИГРУ",
+            bg=CARD_COLOR,
+            padx=20,
+            pady=16,
+            highlightthickness=1,
+            highlightbackground=CARD_BORDER_COLOR,
+        )
+        launch_panel.pack(fill="x", pady=(20, 0))
+        launch_copy = tk.Frame(launch_panel, bg=CARD_COLOR)
+        launch_copy.pack(side="left", fill="x", expand=True)
+        tk.Label(
+            launch_copy,
+            textvariable=self.settings_summary_var,
+            bg=CARD_COLOR,
+            fg=TEXT_COLOR,
+            font=("TkDefaultFont", 12, "bold"),
+        ).pack(anchor="w")
+        tk.Label(
+            launch_copy,
+            textvariable=self.settings_hint_var,
+            bg=CARD_COLOR,
+            fg=MUTED_COLOR,
+        ).pack(anchor="w", pady=(3, 0))
+        tk.Button(
+            launch_panel,
+            text="Сбросить",
+            command=self._reset_settings,
+            bg=CARD_SUBTLE_COLOR,
+            fg=TEXT_COLOR,
+            activebackground=CARD_BORDER_COLOR,
+            activeforeground=TEXT_COLOR,
+            relief="flat",
+            padx=14,
+            pady=9,
+        ).pack(side="right", padx=(12, 0))
+        self.start_button = tk.Button(
+            launch_panel,
+            text="▶  НАЧАТЬ СИМУЛЯЦИЮ",
             command=self._start_from_form,
             bg=GRASS_COLOR,
-            fg="#102117",
+            fg=BUTTON_TEXT_COLOR,
             activebackground="#77d66b",
-            activeforeground="#102117",
+            activeforeground=BUTTON_TEXT_COLOR,
+            disabledforeground="#6e8574",
             relief="flat",
-            padx=22,
+            padx=20,
             pady=10,
             font=("TkDefaultFont", 11, "bold"),
-        ).pack(pady=(24, 10))
-        tk.Label(
-            frame,
-            text="Настройки сохраняются автоматически • стрелки меняют выбранный ползунок",
-            bg=PANEL_COLOR,
-            fg=MUTED_COLOR,
-        ).pack()
+        )
+        self.start_button.pack(side="right")
         self.root.bind("<Return>", lambda _event: self._start_from_form())
+        self._settings_changed()
 
     def _add_slider(
         self,
@@ -180,9 +289,24 @@ class EcosystemApp:
             tk.IntVar(value=int(value)) if integer else tk.DoubleVar(value=float(value))
         )
         self.setting_vars[key] = variable
-        slot = tk.Frame(parent, bg=PANEL_COLOR)
-        slot.pack(fill="x", pady=(9, 15))
-        tk.Label(slot, text=label, bg=PANEL_COLOR, fg=TEXT_COLOR, anchor="w").pack(anchor="w")
+        value_var = tk.StringVar(value=self._format_setting_value(value, integer))
+        self.setting_value_vars[key] = value_var
+        slot = tk.Frame(parent, bg=CARD_COLOR)
+        slot.pack(fill="x", pady=(8, 12))
+        label_row = tk.Frame(slot, bg=CARD_COLOR)
+        label_row.pack(fill="x")
+        tk.Label(label_row, text=label, bg=CARD_COLOR, fg=TEXT_COLOR, anchor="w").pack(
+            side="left", fill="x", expand=True
+        )
+        tk.Label(
+            label_row,
+            textvariable=value_var,
+            bg=CARD_SUBTLE_COLOR,
+            fg=TEXT_COLOR,
+            padx=7,
+            pady=1,
+            font=("TkDefaultFont", 9, "bold"),
+        ).pack(side="right")
         scale = tk.Scale(
             slot,
             from_=low,
@@ -190,37 +314,42 @@ class EcosystemApp:
             resolution=resolution,
             orient="horizontal",
             variable=variable,
-            length=245,
-            showvalue=True,
-            bg=PANEL_COLOR,
+            length=235,
+            showvalue=False,
+            bg=CARD_COLOR,
             fg=TEXT_COLOR,
-            troughcolor="#304c38",
+            troughcolor=CARD_SUBTLE_COLOR,
             activebackground=GRASS_COLOR,
-            highlightthickness=1,
-            highlightbackground=PANEL_COLOR,
+            highlightthickness=2,
+            highlightbackground=CARD_COLOR,
             highlightcolor=GRASS_COLOR,
             takefocus=True,
             bd=0,
-            command=self._settings_changed,
+            sliderrelief="flat",
         )
         scale.pack(fill="x")
-        range_row = tk.Frame(slot, bg=PANEL_COLOR)
+        range_row = tk.Frame(slot, bg=CARD_COLOR)
         range_row.pack(fill="x")
-        low_text = str(int(low)) if integer or float(low).is_integer() else f"{low:g}"
-        high_text = str(int(high)) if integer or float(high).is_integer() else f"{high:g}"
-        tk.Label(range_row, text=f"мин. {low_text}", bg=PANEL_COLOR, fg=MUTED_COLOR).pack(
+        low_text = self._format_setting_value(low, integer)
+        high_text = self._format_setting_value(high, integer)
+        tk.Label(range_row, text=f"мин. {low_text}", bg=CARD_COLOR, fg=MUTED_COLOR).pack(
             side="left"
         )
-        tk.Label(range_row, text=f"макс. {high_text}", bg=PANEL_COLOR, fg=MUTED_COLOR).pack(
+        tk.Label(range_row, text=f"макс. {high_text}", bg=CARD_COLOR, fg=MUTED_COLOR).pack(
             side="right"
         )
+
+        def sync_value(*_args: str) -> None:
+            value_var.set(self._format_setting_value(variable.get(), integer))
+            self._settings_changed()
+
+        variable.trace_add("write", sync_value)
 
         def move_with_key(direction: int) -> str:
             scale.focus_set()
             current = float(variable.get())
             new_value = min(high, max(low, current + direction * resolution))
             variable.set(int(new_value) if integer else round(new_value, 1))
-            self._settings_changed()
             return "break"
 
         scale.bind("<Button-1>", lambda _event: scale.focus_set(), add="+")
@@ -228,6 +357,10 @@ class EcosystemApp:
         scale.bind("<Down>", lambda _event: move_with_key(-1))
         scale.bind("<Right>", lambda _event: move_with_key(1))
         scale.bind("<Up>", lambda _event: move_with_key(1))
+
+    @staticmethod
+    def _format_setting_value(value: int | float, integer: bool) -> str:
+        return str(int(value)) if integer else f"{float(value):g}"
 
     def _start_from_form(self) -> None:
         settings = self._settings_from_vars()
@@ -237,9 +370,7 @@ class EcosystemApp:
         self.start_game(settings)
 
     def start_game(self, settings: GameSettings) -> None:
-        if self.settings_frame is not None:
-            self.settings_frame.destroy()
-            self.settings_frame = None
+        self._detach_settings_frame()
         self.root.unbind("<Return>")
         self.settings = settings
         self.store.save(settings)
