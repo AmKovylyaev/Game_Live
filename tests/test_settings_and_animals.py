@@ -14,8 +14,11 @@ from ecosystem.ui.app import (
     CANVAS_BORDER_WIDTH,
     DEFAULT_WINDOW_WIDTH,
     GAME_CONTENT_PADDING,
+    GAME_MAX_CANVAS_HEIGHT,
     GAME_STATS_PANEL_GAP,
     GAME_STATS_PANEL_WIDTH,
+    GAME_VERTICAL_LAYOUT_RESERVE,
+    MIN_WINDOW_HEIGHT,
     SETTINGS_FRAME_CLEANUP_DELAY_MS,
     SLIDER_SECTIONS,
     EcosystemApp,
@@ -174,6 +177,7 @@ class GameViewportTests(unittest.TestCase):
             columns=columns,
             rows=22,
             window_width=DEFAULT_WINDOW_WIDTH,
+            window_height=MIN_WINDOW_HEIGHT,
         )
         available_width = (
             DEFAULT_WINDOW_WIDTH
@@ -184,6 +188,22 @@ class GameViewportTests(unittest.TestCase):
         )
 
         self.assertLessEqual(columns * cell_size, available_width)
+
+    def test_every_supported_height_fits_the_minimum_window(self) -> None:
+        available_height = min(
+            GAME_MAX_CANVAS_HEIGHT,
+            MIN_WINDOW_HEIGHT - GAME_VERTICAL_LAYOUT_RESERVE,
+        )
+
+        for rows in range(8, 71):
+            cell_size = EcosystemApp._cell_size_for_viewport(
+                columns=8,
+                rows=rows,
+                window_width=DEFAULT_WINDOW_WIDTH,
+                window_height=MIN_WINDOW_HEIGHT,
+            )
+
+            self.assertLessEqual(rows * cell_size, available_height)
 
 
 class GrassMeterTests(unittest.TestCase):

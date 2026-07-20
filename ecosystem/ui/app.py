@@ -38,6 +38,7 @@ GAME_CONTENT_PADDING = 12
 GAME_STATS_PANEL_WIDTH = 250
 GAME_STATS_PANEL_GAP = 12
 GAME_MAX_CANVAS_HEIGHT = 680
+GAME_VERTICAL_LAYOUT_RESERVE = 64
 CANVAS_BORDER_WIDTH = 2
 MIN_CELL_SIZE = 5
 MAX_CELL_SIZE = 24
@@ -429,8 +430,11 @@ class EcosystemApp:
         window_width = self.root.winfo_width()
         if window_width <= 1:
             window_width = DEFAULT_WINDOW_WIDTH
+        window_height = self.root.winfo_height()
+        if window_height <= 1:
+            window_height = DEFAULT_WINDOW_HEIGHT
         cell_size = self._cell_size_for_viewport(
-            self.simulation.columns, self.simulation.rows, window_width
+            self.simulation.columns, self.simulation.rows, window_width, window_height
         )
         top = tk.Frame(frame, bg=PANEL_COLOR, padx=GAME_CONTENT_PADDING, pady=8)
         top.pack(fill="x")
@@ -483,7 +487,9 @@ class EcosystemApp:
         ).pack()
 
     @staticmethod
-    def _cell_size_for_viewport(columns: int, rows: int, window_width: int) -> int:
+    def _cell_size_for_viewport(
+        columns: int, rows: int, window_width: int, window_height: int
+    ) -> int:
         available_width = max(
             MIN_CELL_SIZE,
             window_width
@@ -492,12 +498,14 @@ class EcosystemApp:
             - GAME_STATS_PANEL_GAP
             - 2 * CANVAS_BORDER_WIDTH,
         )
+        available_height = max(MIN_CELL_SIZE, window_height - GAME_VERTICAL_LAYOUT_RESERVE)
         return max(
             MIN_CELL_SIZE,
             min(
                 MAX_CELL_SIZE,
                 available_width // columns,
                 GAME_MAX_CANVAS_HEIGHT // rows,
+                available_height // rows,
             ),
         )
 
