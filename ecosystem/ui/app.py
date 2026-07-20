@@ -27,7 +27,9 @@ CARD_SUBTLE_COLOR = "#294233"
 BUTTON_TEXT_COLOR = "#102117"
 SLIDER_TROUGH_COLOR = "#5b9664"
 SLIDER_ACCENT_COLOR = "#ddff82"
-SETTINGS_FRAME_CLEANUP_DELAY_MS = 80
+SETTINGS_FRAME_CLEANUP_DELAY_MS = 200
+GRASS_METER_BACKGROUND = "#0d1510"
+GRASS_METER_BORDER = "#71917a"
 DEFAULT_WINDOW_WIDTH = 1120
 DEFAULT_WINDOW_HEIGHT = 780
 MIN_WINDOW_WIDTH = 980
@@ -92,6 +94,10 @@ class EcosystemApp:
         self.game_speed = 1.0
         self.speed_button: Optional[tk.Button] = None
         self.start_button: Optional[tk.Button] = None
+        self.grass_meter: Optional[tk.Canvas] = None
+        self.grass_meter_fill: Optional[int] = None
+        self.grass_meter_border: Optional[int] = None
+        self.grass_coverage = 0.0
         self.setting_vars: dict[str, tk.Variable] = {}
         self.setting_value_vars: dict[str, tk.StringVar] = {}
         self._updating_settings = False
@@ -101,7 +107,6 @@ class EcosystemApp:
         self.time_var = tk.StringVar()
         self.herbivore_count_var = tk.StringVar()
         self.predator_count_var = tk.StringVar()
-        self.grass_count_var = tk.StringVar()
         self.settings_summary_var = tk.StringVar()
         self.settings_hint_var = tk.StringVar()
 
@@ -115,15 +120,21 @@ class EcosystemApp:
         self.store.save(self.settings)
         self.root.destroy()
 
-    def _detach_game_frame(self, *, destroy_after_ms: int = 0) -> None:
+    def _detach_game_frame(self) -> Optional[tk.Frame]:
         old_frame = self.game_frame
         self.game_frame = None
         if old_frame is not None:
             old_frame.pack_forget()
-            if destroy_after_ms:
-                self.root.after(destroy_after_ms, old_frame.destroy)
-            else:
-                old_frame.destroy()
+        return old_frame
+
+    def _destroy_after_settings_paint(self, frame: Optional[tk.Frame]) -> None:
+        if frame is None:
+            return
+
+        def schedule_destroy() -> None:
+            self.root.after(SETTINGS_FRAME_CLEANUP_DELAY_MS, frame.destroy)
+
+        self.root.after_idle(schedule_destroy)
 
     def _detach_settings_frame(self) -> None:
         old_frame = self.settings_frame
@@ -174,12 +185,13 @@ class EcosystemApp:
             self.root.after_cancel(self.after_id)
             self.after_id = None
         self._detach_settings_frame()
-        # A game board may own thousands of canvas items.  Releasing it after
-        # the settings form has had a chance to paint keeps the transition
-        # responsive instead of making the sliders appear late.
-        self._detach_game_frame(destroy_after_ms=SETTINGS_FRAME_CLEANUP_DELAY_MS)
+        old_game_frame = self._detach_game_frame()
         self.renderer = None
         self.simulation = None
+        self.grass_meter = None
+        self.grass_meter_fill = None
+        self.grass_meter_border = None
+        self.grass_coverage = 0.0
         self.setting_vars = {}
         self.setting_value_vars = {}
         self.start_button = None
@@ -295,6 +307,9 @@ class EcosystemApp:
         self.start_button.pack(side="right")
         self.root.bind("<Return>", lambda _event: self._start_from_form())
         self._settings_changed()
+        # A game board or history graph can own a substantial canvas. Delay
+        # its destruction until the new form completed its first layout pass.
+        self._destroy_after_settings_paint(old_game_frame)
 
     def _add_slider(
         self,
@@ -553,14 +568,26 @@ class EcosystemApp:
             bg=PANEL_COLOR,
             fg=PREDATOR_COLOR,
         ).pack()
-        tk.Label(
+        tk.Label(counts, text="Трава", anchor="w", bg=PANEL_COLOR, fg=GRASS_COLOR).pack(
+            fill="x", pady=(6, 3)
+        )
+        self.grass_meter = tk.Canvas(
             counts,
-            textvariable=self.grass_count_var,
-            width=24,
-            anchor="w",
-            bg=PANEL_COLOR,
-            fg=GRASS_COLOR,
-        ).pack()
+            height=16,
+            bg=GRASS_METER_BACKGROUND,
+            highlightthickness=0,
+            bd=0,
+            takefocus=False,
+        )
+        self.grass_meter_fill = self.grass_meter.create_rectangle(
+            0, 0, 0, 0, fill=GRASS_COLOR, outline=""
+        )
+        self.grass_meter_border = self.grass_meter.create_rectangle(
+            0, 0, 0, 0, outline=GRASS_METER_BORDER
+        )
+        self.grass_meter.pack(fill="x")
+        self.grass_meter.bind("<Configure>", lambda _event: self._render_grass_meter())
+        self._render_grass_meter()
 
     def _update_status(self) -> None:
         assert self.simulation is not None
@@ -570,7 +597,38 @@ class EcosystemApp:
         self.time_var.set(f"Время: {self.simulation.elapsed:06.1f} с")
         self.herbivore_count_var.set(f"Травоядные: {herbivores:4d}")
         self.predator_count_var.set(f"Хищники:   {predators:4d}")
-        self.grass_count_var.set(f"Трава:     {grass:4d}")
+        self.grass_coverage = self._grass_coverage(
+            grass, self.simulation.columns, self.simulation.rows
+        )
+        self._render_grass_meter()
+
+    @staticmethod
+    def _grass_coverage(ready_grass: int, columns: int, rows: int) -> float:
+        maximum = max(1, columns * rows)
+        return min(1.0, max(0.0, ready_grass / maximum))
+
+    def _render_grass_meter(self) -> None:
+        if (
+            self.grass_meter is None
+            or self.grass_meter_fill is None
+            or self.grass_meter_border is None
+        ):
+            return
+        width = max(1, self.grass_meter.winfo_width())
+        height = max(1, self.grass_meter.winfo_height())
+        inner_width = max(0, width - 2)
+        fill_width = round(inner_width * self.grass_coverage)
+        self.grass_meter.coords(
+            self.grass_meter_fill,
+            1,
+            1,
+            1 + fill_width,
+            max(1, height - 1),
+        )
+        self.grass_meter.itemconfigure(
+            self.grass_meter_fill, state="normal" if fill_width else "hidden"
+        )
+        self.grass_meter.coords(self.grass_meter_border, 0, 0, width - 1, height - 1)
 
     def _toggle_pause(self) -> None:
         self.paused = not self.paused
@@ -608,7 +666,9 @@ class EcosystemApp:
         self.after_id = self.root.after(TICK_MS, self._tick)
 
     def _show_game_over(self) -> None:
-        self._detach_game_frame()
+        old_game_frame = self._detach_game_frame()
+        if old_game_frame is not None:
+            old_game_frame.destroy()
         self.renderer = None
         self.speed_button = None
         assert self.simulation is not None
@@ -645,7 +705,8 @@ class EcosystemApp:
         ).pack(pady=(10, 0))
 
     def _draw_history_graph(self, graph: tk.Canvas, width: int, height: int) -> None:
-        assert self.simulation is not None
+        if self.simulation is None:
+            return
         graph.delete("all")
         width, height = max(1, width), max(1, height)
         history = self.simulation.history

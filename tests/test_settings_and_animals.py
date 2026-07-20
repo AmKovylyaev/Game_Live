@@ -122,10 +122,14 @@ class SettingsUiTests(unittest.TestCase):
 
 
 class GameFrameCleanupTests(unittest.TestCase):
-    def test_cleanup_can_wait_until_the_settings_form_is_visible(self) -> None:
+    def test_cleanup_waits_for_the_settings_form_layout(self) -> None:
         class Root:
             def __init__(self) -> None:
+                self.idle_callbacks: list[object] = []
                 self.callbacks: list[tuple[int, object]] = []
+
+            def after_idle(self, callback: object) -> None:
+                self.idle_callbacks.append(callback)
 
             def after(self, delay_ms: int, callback: object) -> None:
                 self.callbacks.append((delay_ms, callback))
@@ -147,11 +151,15 @@ class GameFrameCleanupTests(unittest.TestCase):
         app.root = root  # type: ignore[assignment]
         app.game_frame = frame  # type: ignore[assignment]
 
-        app._detach_game_frame(destroy_after_ms=SETTINGS_FRAME_CLEANUP_DELAY_MS)
+        detached_frame = app._detach_game_frame()
+        app._destroy_after_settings_paint(detached_frame)
 
         self.assertIsNone(app.game_frame)
         self.assertTrue(frame.hidden)
         self.assertFalse(frame.destroyed)
+        self.assertEqual(len(root.idle_callbacks), 1)
+        self.assertEqual(root.callbacks, [])
+        root.idle_callbacks[0]()  # type: ignore[operator]
         self.assertEqual(len(root.callbacks), 1)
         delay_ms, callback = root.callbacks[0]
         self.assertEqual(delay_ms, SETTINGS_FRAME_CLEANUP_DELAY_MS)
@@ -176,6 +184,13 @@ class GameViewportTests(unittest.TestCase):
         )
 
         self.assertLessEqual(columns * cell_size, available_width)
+
+
+class GrassMeterTests(unittest.TestCase):
+    def test_coverage_uses_the_current_field_area(self) -> None:
+        self.assertEqual(EcosystemApp._grass_coverage(50, columns=10, rows=10), 0.5)
+        self.assertEqual(EcosystemApp._grass_coverage(150, columns=10, rows=10), 1.0)
+        self.assertEqual(EcosystemApp._grass_coverage(-1, columns=10, rows=10), 0.0)
 
 
 class PackagedSettingsTests(unittest.TestCase):
