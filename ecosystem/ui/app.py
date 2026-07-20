@@ -302,18 +302,17 @@ class EcosystemApp:
         self.setting_value_vars[key] = value_var
         slot = tk.Frame(parent, bg=CARD_COLOR)
         slot.pack(fill="x", pady=(8, 12))
-        tk.Label(slot, text=label, bg=CARD_COLOR, fg=TEXT_COLOR, anchor="w").pack(fill="x")
-        value_row = tk.Frame(slot, bg=CARD_COLOR)
-        value_row.pack(fill="x", pady=(5, 3))
+        label_row = tk.Frame(slot, bg=CARD_COLOR)
+        label_row.pack(fill="x", pady=(0, 3))
         tk.Label(
-            value_row,
-            text="ТЕКУЩЕЕ ЗНАЧЕНИЕ",
+            label_row,
+            text=label,
             bg=CARD_COLOR,
-            fg=MUTED_COLOR,
-            font=("TkDefaultFont", 8, "bold"),
-        ).pack(side="left")
+            fg=TEXT_COLOR,
+            anchor="w",
+        ).pack(side="left", fill="x", expand=True)
         tk.Label(
-            value_row,
+            label_row,
             textvariable=value_var,
             bg=SLIDER_ACCENT_COLOR,
             fg=BUTTON_TEXT_COLOR,
