@@ -28,6 +28,17 @@ BUTTON_TEXT_COLOR = "#102117"
 SLIDER_TROUGH_COLOR = "#5b9664"
 SLIDER_ACCENT_COLOR = "#ddff82"
 SETTINGS_FRAME_CLEANUP_DELAY_MS = 80
+DEFAULT_WINDOW_WIDTH = 1120
+DEFAULT_WINDOW_HEIGHT = 780
+MIN_WINDOW_WIDTH = 980
+MIN_WINDOW_HEIGHT = 720
+GAME_CONTENT_PADDING = 12
+GAME_STATS_PANEL_WIDTH = 250
+GAME_STATS_PANEL_GAP = 12
+GAME_MAX_CANVAS_HEIGHT = 680
+CANVAS_BORDER_WIDTH = 2
+MIN_CELL_SIZE = 5
+MAX_CELL_SIZE = 24
 
 SLIDER_SECTIONS = (
     (
@@ -67,8 +78,8 @@ class EcosystemApp:
         self.root = root
         self.root.title("Пиксельная экосистема")
         self.root.configure(bg=PANEL_COLOR)
-        self.root.geometry("1120x780")
-        self.root.minsize(980, 720)
+        self.root.geometry(f"{DEFAULT_WINDOW_WIDTH}x{DEFAULT_WINDOW_HEIGHT}")
+        self.root.minsize(MIN_WINDOW_WIDTH, MIN_WINDOW_HEIGHT)
         self.store = SettingsStore()
         self.settings = self.store.load()
         self.simulation: Optional[Simulation] = None
@@ -400,8 +411,13 @@ class EcosystemApp:
 
     def _build_game_ui(self, frame: tk.Frame) -> None:
         assert self.simulation is not None
-        cell_size = max(5, min(24, 900 // self.simulation.columns, 680 // self.simulation.rows))
-        top = tk.Frame(frame, bg=PANEL_COLOR, padx=12, pady=8)
+        window_width = self.root.winfo_width()
+        if window_width <= 1:
+            window_width = DEFAULT_WINDOW_WIDTH
+        cell_size = self._cell_size_for_viewport(
+            self.simulation.columns, self.simulation.rows, window_width
+        )
+        top = tk.Frame(frame, bg=PANEL_COLOR, padx=GAME_CONTENT_PADDING, pady=8)
         top.pack(fill="x")
         tk.Label(
             top,
@@ -425,7 +441,7 @@ class EcosystemApp:
         )
 
         content = tk.Frame(frame, bg=PANEL_COLOR)
-        content.pack(fill="both", expand=True, padx=12, pady=(0, 8))
+        content.pack(fill="both", expand=True, padx=GAME_CONTENT_PADDING, pady=(0, 8))
         self._build_stats_panel(content)
 
         board_area = tk.Frame(content, bg="#0d1510")
@@ -437,7 +453,7 @@ class EcosystemApp:
             width=self.simulation.columns * cell_size,
             height=self.simulation.rows * cell_size,
             bg=EMPTY_COLOR,
-            highlightthickness=2,
+            highlightthickness=CANVAS_BORDER_WIDTH,
             highlightbackground="#4f7657",
         )
         canvas.pack()
@@ -450,6 +466,25 @@ class EcosystemApp:
             fg=MUTED_COLOR,
             pady=6,
         ).pack()
+
+    @staticmethod
+    def _cell_size_for_viewport(columns: int, rows: int, window_width: int) -> int:
+        available_width = max(
+            MIN_CELL_SIZE,
+            window_width
+            - 2 * GAME_CONTENT_PADDING
+            - GAME_STATS_PANEL_WIDTH
+            - GAME_STATS_PANEL_GAP
+            - 2 * CANVAS_BORDER_WIDTH,
+        )
+        return max(
+            MIN_CELL_SIZE,
+            min(
+                MAX_CELL_SIZE,
+                available_width // columns,
+                GAME_MAX_CANVAS_HEIGHT // rows,
+            ),
+        )
 
     @staticmethod
     def _toolbar_button(
@@ -468,8 +503,8 @@ class EcosystemApp:
         )
 
     def _build_stats_panel(self, parent: tk.Frame) -> None:
-        panel = tk.Frame(parent, bg=PANEL_COLOR, width=250)
-        panel.pack(side="left", fill="y", padx=(0, 12))
+        panel = tk.Frame(parent, bg=PANEL_COLOR, width=GAME_STATS_PANEL_WIDTH)
+        panel.pack(side="left", fill="y", padx=(0, GAME_STATS_PANEL_GAP))
         panel.pack_propagate(False)
 
         def group(title: str) -> tk.LabelFrame:

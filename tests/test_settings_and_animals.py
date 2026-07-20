@@ -10,7 +10,16 @@ from ecosystem.animals import Herbivore, Predator
 from ecosystem.grass import GrassField
 from ecosystem.settings import SETTING_KEYS, GameSettings, SettingsStore, _frozen_settings_directory
 from ecosystem.simulation import Simulation
-from ecosystem.ui.app import SETTINGS_FRAME_CLEANUP_DELAY_MS, SLIDER_SECTIONS, EcosystemApp
+from ecosystem.ui.app import (
+    CANVAS_BORDER_WIDTH,
+    DEFAULT_WINDOW_WIDTH,
+    GAME_CONTENT_PADDING,
+    GAME_STATS_PANEL_GAP,
+    GAME_STATS_PANEL_WIDTH,
+    SETTINGS_FRAME_CLEANUP_DELAY_MS,
+    SLIDER_SECTIONS,
+    EcosystemApp,
+)
 
 
 class GameSettingsTests(unittest.TestCase):
@@ -148,6 +157,25 @@ class GameFrameCleanupTests(unittest.TestCase):
         self.assertEqual(delay_ms, SETTINGS_FRAME_CLEANUP_DELAY_MS)
         callback()  # type: ignore[operator]
         self.assertTrue(frame.destroyed)
+
+
+class GameViewportTests(unittest.TestCase):
+    def test_wide_field_fits_next_to_the_stats_panel(self) -> None:
+        columns = 100
+        cell_size = EcosystemApp._cell_size_for_viewport(
+            columns=columns,
+            rows=22,
+            window_width=DEFAULT_WINDOW_WIDTH,
+        )
+        available_width = (
+            DEFAULT_WINDOW_WIDTH
+            - 2 * GAME_CONTENT_PADDING
+            - GAME_STATS_PANEL_WIDTH
+            - GAME_STATS_PANEL_GAP
+            - 2 * CANVAS_BORDER_WIDTH
+        )
+
+        self.assertLessEqual(columns * cell_size, available_width)
 
 
 class PackagedSettingsTests(unittest.TestCase):
