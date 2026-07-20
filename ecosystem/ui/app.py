@@ -25,6 +25,9 @@ CARD_COLOR = "#1d2d24"
 CARD_BORDER_COLOR = "#395842"
 CARD_SUBTLE_COLOR = "#294233"
 BUTTON_TEXT_COLOR = "#102117"
+SLIDER_TROUGH_COLOR = "#5b9664"
+SLIDER_ACCENT_COLOR = "#ddff82"
+SETTINGS_FRAME_CLEANUP_DELAY_MS = 80
 
 SLIDER_SECTIONS = (
     (
@@ -101,12 +104,15 @@ class EcosystemApp:
         self.store.save(self.settings)
         self.root.destroy()
 
-    def _detach_game_frame(self) -> None:
+    def _detach_game_frame(self, *, destroy_after_ms: int = 0) -> None:
         old_frame = self.game_frame
         self.game_frame = None
         if old_frame is not None:
             old_frame.pack_forget()
-            self.root.after_idle(old_frame.destroy)
+            if destroy_after_ms:
+                self.root.after(destroy_after_ms, old_frame.destroy)
+            else:
+                old_frame.destroy()
 
     def _detach_settings_frame(self) -> None:
         old_frame = self.settings_frame
@@ -157,7 +163,10 @@ class EcosystemApp:
             self.root.after_cancel(self.after_id)
             self.after_id = None
         self._detach_settings_frame()
-        self._detach_game_frame()
+        # A game board may own thousands of canvas items.  Releasing it after
+        # the settings form has had a chance to paint keeps the transition
+        # responsive instead of making the sliders appear late.
+        self._detach_game_frame(destroy_after_ms=SETTINGS_FRAME_CLEANUP_DELAY_MS)
         self.renderer = None
         self.simulation = None
         self.setting_vars = {}
@@ -293,18 +302,23 @@ class EcosystemApp:
         self.setting_value_vars[key] = value_var
         slot = tk.Frame(parent, bg=CARD_COLOR)
         slot.pack(fill="x", pady=(8, 12))
-        label_row = tk.Frame(slot, bg=CARD_COLOR)
-        label_row.pack(fill="x")
-        tk.Label(label_row, text=label, bg=CARD_COLOR, fg=TEXT_COLOR, anchor="w").pack(
-            side="left", fill="x", expand=True
-        )
+        tk.Label(slot, text=label, bg=CARD_COLOR, fg=TEXT_COLOR, anchor="w").pack(fill="x")
+        value_row = tk.Frame(slot, bg=CARD_COLOR)
+        value_row.pack(fill="x", pady=(5, 3))
         tk.Label(
-            label_row,
+            value_row,
+            text="ТЕКУЩЕЕ ЗНАЧЕНИЕ",
+            bg=CARD_COLOR,
+            fg=MUTED_COLOR,
+            font=("TkDefaultFont", 8, "bold"),
+        ).pack(side="left")
+        tk.Label(
+            value_row,
             textvariable=value_var,
-            bg=CARD_SUBTLE_COLOR,
-            fg=TEXT_COLOR,
-            padx=7,
-            pady=1,
+            bg=SLIDER_ACCENT_COLOR,
+            fg=BUTTON_TEXT_COLOR,
+            padx=8,
+            pady=2,
             font=("TkDefaultFont", 9, "bold"),
         ).pack(side="right")
         scale = tk.Scale(
@@ -318,14 +332,14 @@ class EcosystemApp:
             showvalue=False,
             bg=CARD_COLOR,
             fg=TEXT_COLOR,
-            troughcolor=CARD_SUBTLE_COLOR,
-            activebackground=GRASS_COLOR,
-            highlightthickness=2,
+            troughcolor=SLIDER_TROUGH_COLOR,
+            activebackground=SLIDER_ACCENT_COLOR,
+            highlightthickness=1,
             highlightbackground=CARD_COLOR,
-            highlightcolor=GRASS_COLOR,
+            highlightcolor=SLIDER_ACCENT_COLOR,
             takefocus=True,
-            bd=0,
-            sliderrelief="flat",
+            bd=1,
+            sliderrelief="raised",
         )
         scale.pack(fill="x")
         range_row = tk.Frame(slot, bg=CARD_COLOR)

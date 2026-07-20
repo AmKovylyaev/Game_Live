@@ -10,7 +10,7 @@ from ecosystem.animals import Herbivore, Predator
 from ecosystem.grass import GrassField
 from ecosystem.settings import SETTING_KEYS, GameSettings, SettingsStore, _frozen_settings_directory
 from ecosystem.simulation import Simulation
-from ecosystem.ui.app import SLIDER_SECTIONS
+from ecosystem.ui.app import SETTINGS_FRAME_CLEANUP_DELAY_MS, SLIDER_SECTIONS, EcosystemApp
 
 
 class GameSettingsTests(unittest.TestCase):
@@ -110,6 +110,44 @@ class SettingsUiTests(unittest.TestCase):
         ]
 
         self.assertCountEqual(visible_keys, SETTING_KEYS)
+
+
+class GameFrameCleanupTests(unittest.TestCase):
+    def test_cleanup_can_wait_until_the_settings_form_is_visible(self) -> None:
+        class Root:
+            def __init__(self) -> None:
+                self.callbacks: list[tuple[int, object]] = []
+
+            def after(self, delay_ms: int, callback: object) -> None:
+                self.callbacks.append((delay_ms, callback))
+
+        class Frame:
+            def __init__(self) -> None:
+                self.hidden = False
+                self.destroyed = False
+
+            def pack_forget(self) -> None:
+                self.hidden = True
+
+            def destroy(self) -> None:
+                self.destroyed = True
+
+        app = EcosystemApp.__new__(EcosystemApp)
+        root = Root()
+        frame = Frame()
+        app.root = root  # type: ignore[assignment]
+        app.game_frame = frame  # type: ignore[assignment]
+
+        app._detach_game_frame(destroy_after_ms=SETTINGS_FRAME_CLEANUP_DELAY_MS)
+
+        self.assertIsNone(app.game_frame)
+        self.assertTrue(frame.hidden)
+        self.assertFalse(frame.destroyed)
+        self.assertEqual(len(root.callbacks), 1)
+        delay_ms, callback = root.callbacks[0]
+        self.assertEqual(delay_ms, SETTINGS_FRAME_CLEANUP_DELAY_MS)
+        callback()  # type: ignore[operator]
+        self.assertTrue(frame.destroyed)
 
 
 class PackagedSettingsTests(unittest.TestCase):
