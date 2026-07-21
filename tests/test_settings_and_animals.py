@@ -7,6 +7,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from ecosystem.animals import Herbivore, Predator
+from ecosystem.constants import RENDER_MS, TICK_MS
 from ecosystem.grass import GrassField
 from ecosystem.settings import SETTING_KEYS, GameSettings, SettingsStore, _frozen_settings_directory
 from ecosystem.simulation import Simulation
@@ -23,6 +24,7 @@ from ecosystem.ui.app import (
     SLIDER_SECTIONS,
     EcosystemApp,
 )
+from ecosystem.ui.renderer import CanvasRenderer
 
 
 class GameSettingsTests(unittest.TestCase):
@@ -93,6 +95,24 @@ class GrassFieldTests(unittest.TestCase):
         self.assertTrue(field.is_ready((0, 0)))
         self.assertEqual(field.ready_count, 4)
 
+    def test_changed_cells_are_reported_only_when_the_visual_stage_changes(self) -> None:
+        field = GrassField(columns=2, rows=2)
+
+        field.consume((0, 0))
+        self.assertEqual(field.take_changed_cells(), {(0, 0)})
+
+        field.tick(0.1, regrowth_seconds=1.0)
+        self.assertEqual(field.take_changed_cells(), set())
+
+        field.tick(0.15, regrowth_seconds=1.0)
+        self.assertEqual(field.growth_stage((0, 0)), 1)
+        self.assertEqual(field.take_changed_cells(), {(0, 0)})
+
+        field.tick(0.75, regrowth_seconds=1.0)
+        self.assertTrue(field.is_ready((0, 0)))
+        self.assertEqual(field.growth_stage((0, 0)), 5)
+        self.assertEqual(field.take_changed_cells(), {(0, 0)})
+
 
 class SimulationSmokeTests(unittest.TestCase):
     def test_empty_ecosystem_finishes_immediately(self) -> None:
@@ -113,6 +133,80 @@ class SimulationSmokeTests(unittest.TestCase):
         self.assertGreaterEqual(herbivores, 0)
         self.assertGreaterEqual(predators, 0)
         self.assertGreaterEqual(grass, 0)
+
+
+class CanvasRendererTests(unittest.TestCase):
+    class RecordingCanvas:
+        def __init__(self) -> None:
+            self._next_item = 1
+            self.items: dict[int, dict[str, object]] = {}
+            self.configured: list[int] = []
+            self.deleted: list[int] = []
+
+        def _create(self, kind: str, *coords: int, **options: object) -> int:
+            item = self._next_item
+            self._next_item += 1
+            self.items[item] = {"kind": kind, "coords": coords, "options": options}
+            return item
+
+        def create_rectangle(self, *coords: int, **options: object) -> int:
+            return self._create("rectangle", *coords, **options)
+
+        def create_line(self, *coords: int, **options: object) -> int:
+            return self._create("line", *coords, **options)
+
+        def coords(self, item: int, *coords: int) -> None:
+            self.items[item]["coords"] = coords
+
+        def itemconfigure(self, item: int, **options: object) -> None:
+            self.items[item]["options"].update(options)  # type: ignore[union-attr]
+            self.configured.append(item)
+
+        def delete(self, item: int) -> None:
+            self.deleted.append(item)
+            self.items.pop(item, None)
+
+        def tag_raise(self, _tag: str) -> None:
+            pass
+
+    def test_grass_uses_a_static_background_and_updates_only_changed_cells(self) -> None:
+        simulation = Simulation(GameSettings(columns=3, rows=2, herbivores=0, predators=0))
+        canvas = self.RecordingCanvas()
+        renderer = CanvasRenderer(canvas, simulation, cell_size=12)  # type: ignore[arg-type]
+
+        renderer.draw()
+        rectangles = [item for item in canvas.items.values() if item["kind"] == "rectangle"]
+        self.assertEqual(len(rectangles), 1)
+        self.assertEqual(renderer.grass_items, {})
+
+        simulation.grass.consume((1, 1))
+        renderer.draw()
+        overlay = renderer.grass_items[(1, 1)]
+        self.assertIn(overlay, canvas.items)
+
+        simulation.grass.tick(0.1, regrowth_seconds=1.0)
+        renderer.draw()
+        self.assertEqual(canvas.configured, [])
+
+        simulation.grass.tick(0.15, regrowth_seconds=1.0)
+        renderer.draw()
+        self.assertEqual(canvas.configured, [overlay])
+
+        simulation.grass.tick(0.75, regrowth_seconds=1.0)
+        renderer.draw()
+        self.assertNotIn((1, 1), renderer.grass_items)
+        self.assertIn(overlay, canvas.deleted)
+
+    def test_each_animal_uses_one_canvas_rectangle(self) -> None:
+        simulation = Simulation(GameSettings(columns=3, rows=2, herbivores=1, predators=0))
+        canvas = self.RecordingCanvas()
+        renderer = CanvasRenderer(canvas, simulation, cell_size=12)  # type: ignore[arg-type]
+
+        renderer.draw()
+
+        rectangles = [item for item in canvas.items.values() if item["kind"] == "rectangle"]
+        self.assertEqual(len(rectangles), 2)
+        self.assertEqual(set(renderer.animal_items), {simulation.herbivores[0].entity_id})
 
 
 class SettingsUiTests(unittest.TestCase):
@@ -168,6 +262,47 @@ class GameFrameCleanupTests(unittest.TestCase):
         self.assertEqual(delay_ms, SETTINGS_FRAME_CLEANUP_DELAY_MS)
         callback()  # type: ignore[operator]
         self.assertTrue(frame.destroyed)
+
+
+class GameLoopTests(unittest.TestCase):
+    class Root:
+        def __init__(self) -> None:
+            self.callbacks: list[tuple[int, object]] = []
+
+        def after(self, delay_ms: int, callback: object) -> str:
+            self.callbacks.append((delay_ms, callback))
+            return str(len(self.callbacks))
+
+        def after_cancel(self, _callback_id: str) -> None:
+            pass
+
+    class Renderer:
+        def __init__(self) -> None:
+            self.draw_calls = 0
+
+        def draw(self) -> None:
+            self.draw_calls += 1
+
+    def test_simulation_and_render_use_separate_callbacks(self) -> None:
+        app = EcosystemApp.__new__(EcosystemApp)
+        root = self.Root()
+        renderer = self.Renderer()
+        app.root = root  # type: ignore[assignment]
+        app.after_id = None
+        app.render_after_id = None
+        app.last_tick = 0.0
+        app.paused = False
+        app.game_speed = 1.0
+        app.simulation = Simulation(GameSettings(columns=2, rows=2, herbivores=1, predators=0))
+        app.renderer = renderer  # type: ignore[assignment]
+        app._update_status = lambda: None  # type: ignore[method-assign]
+
+        app._tick()
+        app._render_tick()
+
+        self.assertIn((TICK_MS, app._tick), root.callbacks)
+        self.assertIn((RENDER_MS, app._render_tick), root.callbacks)
+        self.assertEqual(renderer.draw_calls, 1)
 
 
 class GameViewportTests(unittest.TestCase):

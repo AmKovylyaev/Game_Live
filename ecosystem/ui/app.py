@@ -14,6 +14,7 @@ from ..constants import (
     MUTED_COLOR,
     PANEL_COLOR,
     PREDATOR_COLOR,
+    RENDER_MS,
     TEXT_COLOR,
     TICK_MS,
 )
@@ -90,6 +91,7 @@ class EcosystemApp:
         self.settings_frame: Optional[tk.Frame] = None
         self.game_frame: Optional[tk.Frame] = None
         self.after_id: Optional[str] = None
+        self.render_after_id: Optional[str] = None
         self.last_tick = time.perf_counter()
         self.paused = False
         self.game_speed = 1.0
@@ -116,10 +118,18 @@ class EcosystemApp:
         self.show_settings()
 
     def _on_close(self) -> None:
+        self._cancel_game_callbacks()
         if self._has_settings_form():
             self.settings = self._settings_from_vars()
         self.store.save(self.settings)
         self.root.destroy()
+
+    def _cancel_game_callbacks(self) -> None:
+        for attribute in ("after_id", "render_after_id"):
+            callback_id = getattr(self, attribute, None)
+            if callback_id is not None:
+                self.root.after_cancel(callback_id)
+                setattr(self, attribute, None)
 
     def _detach_game_frame(self) -> Optional[tk.Frame]:
         old_frame = self.game_frame
@@ -182,9 +192,7 @@ class EcosystemApp:
         self._settings_changed()
 
     def show_settings(self) -> None:
-        if self.after_id is not None:
-            self.root.after_cancel(self.after_id)
-            self.after_id = None
+        self._cancel_game_callbacks()
         self._detach_settings_frame()
         old_game_frame = self._detach_game_frame()
         self.renderer = None
@@ -424,6 +432,8 @@ class EcosystemApp:
         self._build_game_ui(frame)
         self.last_tick = time.perf_counter()
         self._tick()
+        if not self.simulation.finished:
+            self._render_tick()
 
     def _build_game_ui(self, frame: tk.Frame) -> None:
         assert self.simulation is not None
@@ -477,7 +487,6 @@ class EcosystemApp:
         )
         canvas.pack()
         self.renderer = CanvasRenderer(canvas, self.simulation, cell_size)
-        self.renderer.draw()
         tk.Label(
             board_area,
             text="Зелёный — трава    Голубой — травоядное    Красный — хищник",
@@ -651,12 +660,11 @@ class EcosystemApp:
         if self.simulation is None or self.simulation.finished:
             return
         self.simulation.finish()
-        if self.after_id is not None:
-            self.root.after_cancel(self.after_id)
-            self.after_id = None
+        self._cancel_game_callbacks()
         self._show_game_over()
 
     def _tick(self) -> None:
+        self.after_id = None
         if self.simulation is None:
             return
         now = time.perf_counter()
@@ -664,16 +672,23 @@ class EcosystemApp:
         self.last_tick = now
         if not self.paused:
             self.simulation.step(dt)
-        if self.renderer is not None:
-            self.renderer.draw()
-        self._update_status()
         if self.simulation.finished:
-            self.after_id = None
+            self._cancel_game_callbacks()
             self._show_game_over()
             return
         self.after_id = self.root.after(TICK_MS, self._tick)
 
+    def _render_tick(self) -> None:
+        self.render_after_id = None
+        if self.simulation is None or self.simulation.finished:
+            return
+        if not self.paused and self.renderer is not None:
+            self.renderer.draw()
+        self._update_status()
+        self.render_after_id = self.root.after(RENDER_MS, self._render_tick)
+
     def _show_game_over(self) -> None:
+        self._cancel_game_callbacks()
         old_game_frame = self._detach_game_frame()
         if old_game_frame is not None:
             old_game_frame.destroy()
