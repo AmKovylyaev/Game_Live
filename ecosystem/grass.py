@@ -18,6 +18,7 @@ class GrassField:
     growth: dict[Cell, float] = field(default_factory=dict)
     independent: set[Cell] = field(default_factory=set)
     changed_cells: set[Cell] = field(default_factory=set)
+    newly_ready_cells: set[Cell] = field(default_factory=set)
 
     def __post_init__(self) -> None:
         self.ready = {(x, y) for x in range(self.columns) for y in range(self.rows)}
@@ -54,21 +55,28 @@ class GrassField:
         self.changed_cells = set()
         return changed_cells
 
-    def tick(self, dt: float, regrowth_seconds: float) -> None:
+    def take_newly_ready_cells(self) -> set[Cell]:
+        newly_ready_cells = self.newly_ready_cells
+        self.newly_ready_cells = set()
+        return newly_ready_cells
+
+    def tick(self, dt: float, regrowth_seconds: float, *, rng: random.Random | None = None) -> None:
         if not self.growth:
             return
+        random_source = rng if rng is not None else random
         growth_step = dt / regrowth_seconds
         independent_chance = 1.0 - (1.0 - GRASS_INDEPENDENT_START_CHANCE) ** max(0.0, dt)
         for cell in tuple(self.growth):
             previous_stage = self.growth_stage(cell)
             if self._has_ready_neighbor(cell) or cell in self.independent:
                 self.growth[cell] = min(1.0, self.growth[cell] + growth_step)
-            elif random.random() < independent_chance:
+            elif random_source.random() < independent_chance:
                 self.independent.add(cell)
                 self.growth[cell] = min(1.0, self.growth[cell] + growth_step)
 
             if self.growth[cell] >= 1.0:
                 self.ready.add(cell)
+                self.newly_ready_cells.add(cell)
                 self.growth.pop(cell, None)
                 self.independent.discard(cell)
 
