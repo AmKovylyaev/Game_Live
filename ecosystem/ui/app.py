@@ -96,6 +96,7 @@ class EcosystemApp:
         self.paused = False
         self.game_speed = 1.0
         self.speed_button: Optional[tk.Button] = None
+        self.pause_button: Optional[tk.Button] = None
         self.start_button: Optional[tk.Button] = None
         self.grass_meter: Optional[tk.Canvas] = None
         self.grass_meter_fill: Optional[int] = None
@@ -216,6 +217,7 @@ class EcosystemApp:
         self.setting_vars = {}
         self.setting_value_vars = {}
         self.start_button = None
+        self.pause_button = None
 
         frame = tk.Frame(self.root, bg=PANEL_COLOR, padx=36, pady=30)
         frame.pack(fill="both", expand=True)
@@ -472,9 +474,10 @@ class EcosystemApp:
         self._toolbar_button(top, "Завершить", self._force_finish, "#f3b6ae", "#331211").pack(
             side="right", padx=(6, 0)
         )
-        self._toolbar_button(top, "Пауза", self._toggle_pause, "#b7e3b0", "#102117").pack(
-            side="right", padx=(6, 0)
+        self.pause_button = self._toolbar_button(
+            top, "Пауза", self._toggle_pause, "#b7e3b0", "#102117"
         )
+        self.pause_button.pack(side="right", padx=(6, 0))
         self._toolbar_button(top, "Новые настройки", self.show_settings, "#b7e3b0", "#102117").pack(
             side="right"
         )
@@ -659,6 +662,8 @@ class EcosystemApp:
 
     def _toggle_pause(self) -> None:
         self.paused = not self.paused
+        if self.pause_button is not None:
+            self.pause_button.configure(text="Продолжить" if self.paused else "Пауза")
         self.last_tick = time.perf_counter()
 
     def _toggle_game_speed(self) -> None:
@@ -704,6 +709,7 @@ class EcosystemApp:
             old_game_frame.destroy()
         self.renderer = None
         self.speed_button = None
+        self.pause_button = None
         assert self.simulation is not None
 
         frame = tk.Frame(self.root, bg=PANEL_COLOR, padx=24, pady=20)

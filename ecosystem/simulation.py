@@ -13,7 +13,9 @@ from .constants import (
     MAX_HERBIVORE_POPULATION,
     MAX_HISTORY_POINTS,
     MAX_PREDATOR_POPULATION,
+    PREDATOR_NEARBY_PREY_DISTANCE,
     PREDATOR_ONLY_DELAY,
+    PREDATOR_START_RADIUS,
     TARGET_BUCKET_SIZE,
 )
 from .grass import Cell, GrassField
@@ -42,7 +44,9 @@ class Simulation:
         for cell in self.grass.ready:
             self.grass_index.add(cell, cell[0] + 0.5, cell[1] + 0.5)
         self.herbivores = [Herbivore(*self._random_position()) for _ in range(settings.herbivores)]
-        self.predators = [Predator(*self._random_position()) for _ in range(settings.predators)]
+        self.predators = [
+            Predator(*self._predator_start_position(index)) for index in range(settings.predators)
+        ]
         self.herbivore_index = SpatialIndex[Herbivore](self.columns, self.rows, bucket_size)
         for herbivore in self.herbivores:
             self.herbivore_index.add(herbivore, herbivore.x, herbivore.y)
@@ -63,6 +67,17 @@ class Simulation:
         return (
             self.rng.uniform(0.5, max(0.5, self.columns - 0.5)),
             self.rng.uniform(0.5, max(0.5, self.rows - 0.5)),
+        )
+
+    def _predator_start_position(self, index: int) -> tuple[float, float]:
+        if not self.herbivores:
+            return self._random_position()
+        prey = self.herbivores[index % len(self.herbivores)]
+        angle = self.rng.random() * math.tau
+        radius = self.rng.random() ** 0.5 * PREDATOR_START_RADIUS
+        return (
+            min(max(prey.x + math.cos(angle) * radius, 0.5), self.columns - 0.5),
+            min(max(prey.y + math.sin(angle) * radius, 0.5), self.rows - 0.5),
         )
 
     def step(self, dt: float) -> None:
@@ -116,14 +131,13 @@ class Simulation:
         for predator in tuple(self.predators):
             target = predator.target
             if not (isinstance(target, Herbivore) and self.herbivore_index.contains(target)):
-                target = self._choose_target(
-                    self.herbivore_index.nearest(
-                        predator.x,
-                        predator.y,
-                        count=5,
-                        tie_breaker=lambda prey: prey.entity_id,
-                    ).nearest,
-                )
+                nearest_prey = self.herbivore_index.nearest(
+                    predator.x,
+                    predator.y,
+                    count=5,
+                    tie_breaker=lambda prey: prey.entity_id,
+                ).nearest
+                target = self._choose_predator_target(nearest_prey)
                 predator.target = target
             if target is None:
                 continue
@@ -133,6 +147,13 @@ class Simulation:
                 self.herbivores.remove(prey)
                 self.herbivore_index.remove(prey)
                 self._handle_meal(predator)
+
+    def _choose_predator_target(
+        self, nearest: list[tuple[float, Herbivore]]
+    ) -> Optional[Herbivore]:
+        if nearest and nearest[0][0] <= PREDATOR_NEARBY_PREY_DISTANCE:
+            return nearest[0][1]
+        return self._choose_target(nearest)
 
     def _handle_meal(self, animal: Animal) -> None:
         if animal.eat(self.elapsed):

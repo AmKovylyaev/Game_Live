@@ -353,6 +353,29 @@ class GameLoopTests(unittest.TestCase):
         self.assertEqual(renderer.draw_calls, 1)
 
 
+class PauseButtonTests(unittest.TestCase):
+    class Button:
+        def __init__(self) -> None:
+            self.text = "Пауза"
+
+        def configure(self, *, text: str) -> None:
+            self.text = text
+
+    def test_pause_button_switches_to_continue_and_back(self) -> None:
+        app = EcosystemApp.__new__(EcosystemApp)
+        button = self.Button()
+        app.paused = False
+        app.pause_button = button  # type: ignore[assignment]
+
+        app._toggle_pause()
+        self.assertTrue(app.paused)
+        self.assertEqual(button.text, "Продолжить")
+
+        app._toggle_pause()
+        self.assertFalse(app.paused)
+        self.assertEqual(button.text, "Пауза")
+
+
 class GameViewportTests(unittest.TestCase):
     def test_wide_field_fits_next_to_the_stats_panel(self) -> None:
         columns = 100

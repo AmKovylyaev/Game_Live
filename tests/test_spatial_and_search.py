@@ -7,6 +7,7 @@ import random
 import unittest
 from heapq import nsmallest
 
+from ecosystem.animals import Herbivore
 from ecosystem.constants import MAX_HERBIVORE_POPULATION, MAX_PREDATOR_POPULATION
 from ecosystem.grass import GrassField
 from ecosystem.settings import GameSettings
@@ -127,6 +128,55 @@ class PopulationLimitTests(unittest.TestCase):
         self.assertEqual(len(herbivore_simulation.herbivores), MAX_HERBIVORE_POPULATION)
         self.assertEqual(herbivore_simulation.herbivore_index.item_count, MAX_HERBIVORE_POPULATION)
         self.assertEqual(len(predator_simulation.predators), MAX_PREDATOR_POPULATION)
+
+
+class PredatorTargetingTests(unittest.TestCase):
+    def test_nearby_prey_always_uses_the_closest_target(self) -> None:
+        simulation = Simulation(GameSettings(columns=8, rows=8), rng=random.Random(0))
+        closest = Herbivore(2.5, 0.5)
+        farther = Herbivore(3.5, 0.5)
+        simulation.rng = random.Random(0)
+
+        target = simulation._choose_predator_target([(2.0, closest), (3.0, farther)])
+
+        self.assertIs(target, closest)
+
+    def test_distant_prey_keeps_the_weighted_choice(self) -> None:
+        simulation = Simulation(GameSettings(columns=8, rows=8), rng=random.Random(0))
+        closer = Herbivore(3.6, 0.5)
+        farther = Herbivore(4.5, 0.5)
+        simulation.rng = random.Random(0)
+
+        target = simulation._choose_predator_target([(3.1, closer), (4.0, farther)])
+
+        self.assertIs(target, farther)
+
+
+class PredatorStartPositionTests(unittest.TestCase):
+    def test_predators_start_within_ten_cells_of_a_herbivore(self) -> None:
+        simulation = Simulation(
+            GameSettings(columns=30, rows=22, herbivores=4, predators=10),
+            rng=random.Random(12),
+        )
+
+        for predator in simulation.predators:
+            distance_to_nearest_prey = min(
+                math.hypot(predator.x - herbivore.x, predator.y - herbivore.y)
+                for herbivore in simulation.herbivores
+            )
+            self.assertLessEqual(distance_to_nearest_prey, 10.0)
+
+    def test_predators_without_herbivores_use_a_valid_random_position(self) -> None:
+        simulation = Simulation(
+            GameSettings(columns=8, rows=8, herbivores=0, predators=1),
+            rng=random.Random(12),
+        )
+        predator = simulation.predators[0]
+
+        self.assertGreaterEqual(predator.x, 0.5)
+        self.assertLessEqual(predator.x, 7.5)
+        self.assertGreaterEqual(predator.y, 0.5)
+        self.assertLessEqual(predator.y, 7.5)
 
 
 class DeterministicSimulationTests(unittest.TestCase):
