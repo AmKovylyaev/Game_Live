@@ -5,6 +5,7 @@ from __future__ import annotations
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest.mock import patch
 
 from ecosystem.animals import Herbivore, Predator
 from ecosystem.constants import RENDER_MS, TICK_MS
@@ -56,6 +57,20 @@ class GameSettingsTests(unittest.TestCase):
             store.save(settings)
 
             self.assertEqual(store.load(), settings)
+
+    def test_failed_atomic_save_keeps_the_previous_settings(self) -> None:
+        saved_settings = GameSettings(columns=42, herbivores=12)
+        updated_settings = GameSettings(columns=75, predators=9)
+        with TemporaryDirectory() as directory:
+            path = Path(directory) / "settings.json"
+            store = SettingsStore(path)
+            store.save(saved_settings)
+
+            with patch("ecosystem.settings.os.replace", side_effect=OSError):
+                store.save(updated_settings)
+
+            self.assertEqual(store.load(), saved_settings)
+            self.assertEqual(list(path.parent.glob(f".{path.name}.*.tmp")), [])
 
 
 class AnimalConfigurationTests(unittest.TestCase):
@@ -216,6 +231,39 @@ class SettingsUiTests(unittest.TestCase):
         ]
 
         self.assertCountEqual(visible_keys, SETTING_KEYS)
+
+
+class ReturnKeyBindingTests(unittest.TestCase):
+    class Root:
+        def __init__(self) -> None:
+            self.bind_calls: list[tuple[str, object]] = []
+
+        def bind(self, sequence: str, callback: object) -> None:
+            self.bind_calls.append((sequence, callback))
+
+    def test_return_key_is_bound_only_once(self) -> None:
+        app = EcosystemApp.__new__(EcosystemApp)
+        root = self.Root()
+        app.root = root  # type: ignore[assignment]
+        app._return_key_bound = False
+
+        app._bind_return_key()
+        app._bind_return_key()
+
+        self.assertEqual([sequence for sequence, _callback in root.bind_calls], ["<Return>"])
+
+    def test_return_key_starts_only_an_open_settings_form(self) -> None:
+        app = EcosystemApp.__new__(EcosystemApp)
+        app.settings_frame = object()  # type: ignore[assignment]
+        app.setting_vars = dict.fromkeys(SETTING_KEYS, object())  # type: ignore[assignment]
+        starts: list[None] = []
+        app._start_from_form = lambda: starts.append(None)  # type: ignore[method-assign]
+
+        app._start_from_return()
+        app.settings_frame = None
+        app._start_from_return()
+
+        self.assertEqual(starts, [None])
 
 
 class GameFrameCleanupTests(unittest.TestCase):

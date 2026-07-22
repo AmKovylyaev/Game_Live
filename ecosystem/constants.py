@@ -17,6 +17,11 @@ RENDER_MS = 33
 TARGET_BUCKET_SIZE = 8
 HISTORY_INTERVAL = 0.1
 MAX_HISTORY_POINTS = 12_000
+# The settings screen allows at most 300/150 animals at the start. Keeping
+# twice that amount as a runtime ceiling leaves room for reproduction while
+# bounding simulation state and the number of canvas items.
+MAX_HERBIVORE_POPULATION = 600
+MAX_PREDATOR_POPULATION = 300
 
 DEFAULT_HERBIVORE_STARVATION = 15.0
 DEFAULT_PREDATOR_STARVATION = 12.0

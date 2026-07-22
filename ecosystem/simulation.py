@@ -8,7 +8,14 @@ from itertools import chain
 from typing import Iterable, Optional, TypeVar
 
 from .animals import Animal, Herbivore, Predator
-from .constants import HISTORY_INTERVAL, MAX_HISTORY_POINTS, PREDATOR_ONLY_DELAY, TARGET_BUCKET_SIZE
+from .constants import (
+    HISTORY_INTERVAL,
+    MAX_HERBIVORE_POPULATION,
+    MAX_HISTORY_POINTS,
+    MAX_PREDATOR_POPULATION,
+    PREDATOR_ONLY_DELAY,
+    TARGET_BUCKET_SIZE,
+)
 from .grass import Cell, GrassField
 from .settings import GameSettings
 from .spatial import SpatialIndex
@@ -132,10 +139,17 @@ class Simulation:
             self._spawn_offspring(animal, animal.reproduction_coefficient(self.settings))
 
     def _spawn_offspring(self, parent: Animal, coefficient: float) -> None:
+        available_slots = (
+            MAX_HERBIVORE_POPULATION - len(self.herbivores)
+            if isinstance(parent, Herbivore)
+            else MAX_PREDATOR_POPULATION - len(self.predators)
+        )
+        if available_slots <= 0:
+            return
         children = int(coefficient)
         if self.rng.random() < coefficient - children:
             children += 1
-        for _ in range(children):
+        for _ in range(min(children, available_slots)):
             child = self._spawn_near(parent)
             if isinstance(child, Herbivore):
                 self.herbivores.append(child)

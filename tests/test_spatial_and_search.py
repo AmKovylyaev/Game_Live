@@ -7,6 +7,7 @@ import random
 import unittest
 from heapq import nsmallest
 
+from ecosystem.constants import MAX_HERBIVORE_POPULATION, MAX_PREDATOR_POPULATION
 from ecosystem.grass import GrassField
 from ecosystem.settings import GameSettings
 from ecosystem.simulation import Simulation
@@ -107,6 +108,25 @@ class SimulationSpatialLifecycleTests(unittest.TestCase):
 
         self.assertEqual(simulation.herbivores, [])
         self.assertFalse(simulation.herbivore_index.contains(herbivore))
+
+
+class PopulationLimitTests(unittest.TestCase):
+    def test_offspring_do_not_exceed_the_population_caps(self) -> None:
+        herbivore_simulation = Simulation(
+            GameSettings(columns=8, rows=8, herbivores=MAX_HERBIVORE_POPULATION, predators=0),
+            rng=random.Random(3),
+        )
+        predator_simulation = Simulation(
+            GameSettings(columns=8, rows=8, herbivores=0, predators=MAX_PREDATOR_POPULATION),
+            rng=random.Random(4),
+        )
+
+        herbivore_simulation._spawn_offspring(herbivore_simulation.herbivores[0], 3.0)
+        predator_simulation._spawn_offspring(predator_simulation.predators[0], 3.0)
+
+        self.assertEqual(len(herbivore_simulation.herbivores), MAX_HERBIVORE_POPULATION)
+        self.assertEqual(herbivore_simulation.herbivore_index.item_count, MAX_HERBIVORE_POPULATION)
+        self.assertEqual(len(predator_simulation.predators), MAX_PREDATOR_POPULATION)
 
 
 class DeterministicSimulationTests(unittest.TestCase):

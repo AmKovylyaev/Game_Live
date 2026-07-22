@@ -8,6 +8,7 @@ import sys
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
+from tempfile import NamedTemporaryFile
 from typing import Any
 
 from .constants import (
@@ -143,12 +144,30 @@ class SettingsStore:
         return GameSettings()
 
     def save(self, settings: GameSettings) -> None:
+        temporary_path: Path | None = None
         try:
             self.path.parent.mkdir(parents=True, exist_ok=True)
-            self.path.write_text(
-                json.dumps(settings.to_dict(), ensure_ascii=False, indent=2) + "\n",
+            with NamedTemporaryFile(
+                mode="w",
                 encoding="utf-8",
-            )
+                dir=self.path.parent,
+                prefix=f".{self.path.name}.",
+                suffix=".tmp",
+                delete=False,
+            ) as temporary_file:
+                temporary_path = Path(temporary_file.name)
+                temporary_file.write(
+                    json.dumps(settings.to_dict(), ensure_ascii=False, indent=2) + "\n"
+                )
+                temporary_file.flush()
+                os.fsync(temporary_file.fileno())
+            os.replace(temporary_path, self.path)
         except OSError:
             # A read-only directory must not prevent the game from running.
             pass
+        finally:
+            if temporary_path is not None:
+                try:
+                    temporary_path.unlink(missing_ok=True)
+                except OSError:
+                    pass

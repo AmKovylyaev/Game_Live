@@ -104,6 +104,7 @@ class EcosystemApp:
         self.setting_vars: dict[str, tk.Variable] = {}
         self.setting_value_vars: dict[str, tk.StringVar] = {}
         self._updating_settings = False
+        self._return_key_bound = False
 
         self.state_var = tk.StringVar()
         self.game_speed_var = tk.StringVar()
@@ -114,6 +115,7 @@ class EcosystemApp:
         self.settings_hint_var = tk.StringVar()
 
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
+        self._bind_return_key()
         self.store.save(self.settings)
         self.show_settings()
 
@@ -130,6 +132,16 @@ class EcosystemApp:
             if callback_id is not None:
                 self.root.after_cancel(callback_id)
                 setattr(self, attribute, None)
+
+    def _bind_return_key(self) -> None:
+        if self._return_key_bound:
+            return
+        self.root.bind("<Return>", self._start_from_return)
+        self._return_key_bound = True
+
+    def _start_from_return(self, _event: object = None) -> None:
+        if self.settings_frame is not None and self._has_settings_form():
+            self._start_from_form()
 
     def _detach_game_frame(self) -> Optional[tk.Frame]:
         old_frame = self.game_frame
@@ -314,7 +326,6 @@ class EcosystemApp:
             font=("TkDefaultFont", 11, "bold"),
         )
         self.start_button.pack(side="right")
-        self.root.bind("<Return>", lambda _event: self._start_from_form())
         self._settings_changed()
         # A game board or history graph can own a substantial canvas. Delay
         # its destruction until the new form completed its first layout pass.
@@ -419,7 +430,6 @@ class EcosystemApp:
 
     def start_game(self, settings: GameSettings) -> None:
         self._detach_settings_frame()
-        self.root.unbind("<Return>")
         self.settings = settings
         self.store.save(settings)
         self.simulation = Simulation(settings)
