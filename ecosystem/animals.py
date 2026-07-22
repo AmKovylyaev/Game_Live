@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections import deque
 from dataclasses import dataclass, field
+from itertools import count
 from typing import TYPE_CHECKING, ClassVar, Deque, Optional
 
 from .constants import (
@@ -17,6 +18,13 @@ if TYPE_CHECKING:
     from .settings import GameSettings
 
 
+_ANIMAL_IDS = count()
+
+
+def _next_animal_id() -> int:
+    return next(_ANIMAL_IDS)
+
+
 @dataclass(slots=True, eq=False)
 class Animal:
     x: float
@@ -25,6 +33,7 @@ class Animal:
     meals: Deque[float] = field(default_factory=deque)
     speed_effect_for: float = 0.0
     target: Optional[object] = None
+    entity_id: int = field(default_factory=_next_animal_id, init=False)
 
     speed_setting: ClassVar[str]
     starvation_setting: ClassVar[str]

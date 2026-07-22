@@ -1,7 +1,7 @@
 """Entry point for the pixel ecosystem game.
 
 Run with:
-    python3 main.py
+    uv run python main.py
 """
 
 from __future__ import annotations

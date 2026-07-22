@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import tkinter as tk
-from typing import Optional
 
 from ..animals import Herbivore
 from ..constants import (
@@ -33,26 +32,49 @@ class CanvasRenderer:
         self.simulation = simulation
         self.cell_size = cell_size
         self.grass_items: dict[tuple[int, int], int] = {}
-        self.grass_states: dict[tuple[int, int], int] = {}
-        self.animal_items: dict[int, tuple[int, Optional[int]]] = {}
+        self.animal_items: dict[int, int] = {}
+        self._draw_static_field()
 
     def draw(self) -> None:
         self._draw_grass()
         self._draw_animals()
 
+    def _draw_static_field(self) -> None:
+        width = self.simulation.columns * self.cell_size
+        height = self.simulation.rows * self.cell_size
+        self.canvas.create_rectangle(
+            0,
+            0,
+            width,
+            height,
+            fill=GRASS_COLOR,
+            outline="",
+            tags=("grass-background",),
+        )
+        for column in range(1, self.simulation.columns):
+            x = column * self.cell_size
+            self.canvas.create_line(x, 0, x, height, fill=GRID_COLOR, tags=("grass-grid",))
+        for row in range(1, self.simulation.rows):
+            y = row * self.cell_size
+            self.canvas.create_line(0, y, width, y, fill=GRID_COLOR, tags=("grass-grid",))
+
     def _draw_grass(self) -> None:
         field = self.simulation.grass
-        for cell in field.iter_cells():
+        changed_cells = field.take_changed_cells()
+        if not changed_cells:
+            return
+
+        for cell in changed_cells:
             x, y = cell
             left, top = x * self.cell_size, y * self.cell_size
             if field.is_ready(cell):
-                state, color = GRASS_GROWTH_STEPS, GRASS_COLOR
-            else:
-                stage = min(
-                    GRASS_GROWTH_STEPS - 1, int(field.growth_value(cell) * GRASS_GROWTH_STEPS)
-                )
-                state = stage
-                color = blend_colors(GRASS_RECOVERY_START, GRASS_COLOR, stage / GRASS_GROWTH_STEPS)
+                item = self.grass_items.pop(cell, None)
+                if item is not None:
+                    self.canvas.delete(item)
+                continue
+
+            stage = field.growth_stage(cell)
+            color = blend_colors(GRASS_RECOVERY_START, GRASS_COLOR, stage / GRASS_GROWTH_STEPS)
             item = self.grass_items.get(cell)
             if item is None:
                 self.grass_items[cell] = self.canvas.create_rectangle(
@@ -61,24 +83,27 @@ class CanvasRenderer:
                     left + self.cell_size,
                     top + self.cell_size,
                     fill=color,
-                    outline=GRID_COLOR,
+                    outline="",
+                    tags=("grass-overlay",),
                 )
-            elif self.grass_states.get(cell) != state:
+            else:
                 self.canvas.itemconfigure(item, fill=color)
-            self.grass_states[cell] = state
+
+        self.canvas.tag_raise("grass-grid")
+        self.canvas.tag_raise("animals")
 
     def _draw_animals(self) -> None:
         inset = max(1, self.cell_size // 5)
         live_ids: set[int] = set()
         for animal in self.simulation.animals:
-            animal_id = id(animal)
+            animal_id = animal.entity_id
             live_ids.add(animal_id)
             left = int((animal.x - 0.5) * self.cell_size) + inset
             top = int((animal.y - 0.5) * self.cell_size) + inset
             right = int((animal.x + 0.5) * self.cell_size) - inset
             bottom = int((animal.y + 0.5) * self.cell_size) - inset
             color = HERBIVORE_COLOR if isinstance(animal, Herbivore) else PREDATOR_COLOR
-            body, eye = self.animal_items.get(animal_id, (None, None))
+            body = self.animal_items.get(animal_id)
             if body is None:
                 body = self.canvas.create_rectangle(
                     left,
@@ -87,29 +112,12 @@ class CanvasRenderer:
                     max(top + 2, bottom),
                     fill=color,
                     outline="#102117",
+                    tags=("animals",),
                 )
-                if self.cell_size >= 12:
-                    eye_size = max(1, self.cell_size // 10)
-                    eye = self.canvas.create_rectangle(
-                        right - eye_size * 2,
-                        top + eye_size,
-                        right - eye_size,
-                        top + eye_size * 2,
-                        fill="#102117",
-                        outline="",
-                    )
-                self.animal_items[animal_id] = (body, eye)
+                self.animal_items[animal_id] = body
             else:
                 self.canvas.coords(body, left, top, max(left + 2, right), max(top + 2, bottom))
-                self.canvas.itemconfigure(body, fill=color)
-            if eye is not None:
-                eye_size = max(1, self.cell_size // 10)
-                self.canvas.coords(
-                    eye, right - eye_size * 2, top + eye_size, right - eye_size, top + eye_size * 2
-                )
 
         for animal_id in set(self.animal_items) - live_ids:
-            body, eye = self.animal_items.pop(animal_id)
+            body = self.animal_items.pop(animal_id)
             self.canvas.delete(body)
-            if eye is not None:
-                self.canvas.delete(eye)
